@@ -53,7 +53,14 @@ export async function GET(request) {
 
     const data = await res.json();
     const games = transformSchedule(data);
-    return Response.json({ games });
+
+    const now = new Date();
+    const upcoming = games.filter((game) => {
+      if (!game.game_time_utc) return true;
+      return new Date(game.game_time_utc) > now;
+    });
+
+    return Response.json({ games: upcoming });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Неизвестная ошибка";
     return Response.json({ error: message }, { status: 500 });

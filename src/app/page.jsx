@@ -57,6 +57,9 @@ export default function Home() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activeSection, setActiveSection] = useState(SECTION_SCHEDULE);
 
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [statsResult, setStatsResult] = useState(null);
+
   const fetchGames = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -96,6 +99,42 @@ export default function Home() {
       setGames([]);
     } finally {
       setLoading(false);
+    }
+  }, [date]);
+
+  const fetchStats = useCallback(async () => {
+    setStatsLoading(true);
+    try {
+      const dateStr = dateToScheduleParam(date);
+      const res = await fetch(
+        `/api/collect-stats?date=${encodeURIComponent(dateStr)}`,
+      );
+      let data = {};
+      try {
+        data = await res.json();
+      } catch {
+        setStatsResult(null);
+        console.error("collect-stats: не удалось разобрать ответ сервера");
+        return;
+      }
+
+      if (!res.ok) {
+        setStatsResult(null);
+        const message =
+          typeof data.error === "string" ? data.error : "Ошибка загрузки";
+        console.error("collect-stats:", message);
+        return;
+      }
+
+      setStatsResult({
+        pitchers_processed: data.pitchers_processed,
+        teams_processed: data.teams_processed,
+      });
+    } catch (err) {
+      setStatsResult(null);
+      console.error(err);
+    } finally {
+      setStatsLoading(false);
     }
   }, [date]);
 
@@ -164,6 +203,7 @@ export default function Home() {
                   onSelect={(d) => {
                     if (d) {
                       setDate(d);
+                      setStatsResult(null);
                     }
                   }}
                   className="rounded-lg border border-border bg-background shadow-xs"
@@ -246,15 +286,20 @@ export default function Home() {
                 })}
               </div>
 
-              <div className="pt-2">
+              <div className="flex flex-wrap items-center gap-2 pt-2">
                 <Button
                   type="button"
-                  onClick={() => {
-                    console.log(games);
-                  }}
+                  disabled={games.length === 0 || statsLoading}
+                  onClick={() => void fetchStats()}
                 >
-                  Анализировать все
+                  {statsLoading ? "Загрузка..." : "Получить статистику"}
                 </Button>
+                {statsResult != null ? (
+                  <Badge variant="secondary">
+                    Питчеры: {statsResult.pitchers_processed} | Команды:{" "}
+                    {statsResult.teams_processed}
+                  </Badge>
+                ) : null}
               </div>
             </>
           ) : (
