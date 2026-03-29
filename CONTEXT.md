@@ -58,3 +58,54 @@
 - Tailwind CSS
 - n8n (оркестрация агента)
 - Claude API (LLM анализ)
+- shadcn
+
+## UI — страницы и компоненты
+
+### Структура страниц
+
+- / (главная) → Расписание матчей
+- /analysis → Результаты анализа
+- /bets → Журнал ставок
+- /bank → Банк и история
+
+### Layout (src/app/layout.jsx)
+
+- Sidebar слева — фиксированный, сворачивается
+- Основная область справа — flex-1
+- Sidebar цвет: #7371fc (medium-slate)
+- Фон страницы: #ffffff
+
+### Цветовая схема
+
+- Primary: #7371fc (medium-slate)
+- Secondary: #a594f9 (soft-periwinkle)
+- Accent: #cdc1ff (periwinkle)
+- Background: #ffffff
+- Text: #1a1a2e
+
+### Компоненты (src/components/)
+
+- layout/Sidebar.jsx → навигация, сворачивается
+- layout/Header.jsx → заголовок текущей страницы
+- schedule/GameCard.jsx → карточка матча
+- schedule/ScheduleGrid.jsx → сетка карточек
+- analysis/AnalysisCard.jsx → результат анализа
+- bets/BetsTable.jsx → таблица ставок
+- bank/BankSummary.jsx → баланс и график
+
+### Карточка матча (GameCard)
+
+- Away @ Home жирным
+- Время по Москве
+- Питчеры (away и home) или TBD
+- Badge серии (Матч X из Y)
+- Кнопка "Анализировать"
+
+### Правила UI
+
+- Шрифт: Roboto
+- Компоненты: только shadcn/ui + Tailwind
+- Все тексты интерфейса на русском
+- Названия команд и питчеров — оригинальные (английский)
+- Мобильная версия не приоритет
