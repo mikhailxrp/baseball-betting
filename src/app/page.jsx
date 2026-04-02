@@ -24,6 +24,17 @@ import Link from "next/link";
 
 const PITCHER_TBD = "TBD";
 
+/** Имя для карточки: сначала из БД (pitcher_stats), иначе из MLB schedule. */
+function cardPitcherLabel(dbName, mlbNestedName) {
+  const candidates = [dbName, mlbNestedName];
+  for (const n of candidates) {
+    if (n != null && String(n).trim() !== "") {
+      return String(n);
+    }
+  }
+  return PITCHER_TBD;
+}
+
 function startOfToday() {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
@@ -188,8 +199,14 @@ function HomeContent() {
             {games.map((game) => {
               const awayName = game.away_team?.name ?? "—";
               const homeName = game.home_team?.name ?? "—";
-              const awayPitcher = game.away_team?.pitcher?.name ?? PITCHER_TBD;
-              const homePitcher = game.home_team?.pitcher?.name ?? PITCHER_TBD;
+              const awayPitcher = cardPitcherLabel(
+                game.away_pitcher_name,
+                game.away_team?.pitcher?.name,
+              );
+              const homePitcher = cardPitcherLabel(
+                game.home_pitcher_name,
+                game.home_team?.pitcher?.name,
+              );
               const seriesNum = game.series_game_number;
               const seriesTotal = game.games_in_series;
               const showSeriesBadge =

@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 const DATE_TIMEZONE = 'America/New_York';
 const ODDS_STEP = 0.01;
 const STAKE_STEP = 0.01;
+const LINE_STEP = 0.5;
 const PROFIT_PRECISION = 100; // округление до 0.01
 
 const BET_TYPE_LABELS = {
@@ -96,6 +97,9 @@ export default function BetsPage() {
     const f = form[betId] ?? {};
     const oddsValue = f.odds ? parseFloat(f.odds) : null;
     const stakeValue = f.stake ? parseFloat(f.stake) : null;
+    const lineStr =
+      typeof f.line === 'string' ? f.line.trim() : f.line != null ? String(f.line) : '';
+    const lineValue = lineStr === '' ? null : parseFloat(lineStr);
 
     // Валидация на клиенте: если пользователь ввёл строку, приводим к числу.
     if (oddsValue !== null && Number.isNaN(oddsValue)) {
@@ -106,6 +110,10 @@ export default function BetsPage() {
       setError('Сумма ставки введена неверно');
       return;
     }
+    if (lineStr !== '' && Number.isNaN(lineValue)) {
+      setError('Линия введена неверно');
+      return;
+    }
 
     setSubmitting(true);
     setError(null);
@@ -114,6 +122,7 @@ export default function BetsPage() {
         result,
         odds: oddsValue,
         amount: stakeValue,
+        line: lineValue,
       };
 
       const res = await fetch(`/api/bets/${betId}`, {
@@ -231,6 +240,23 @@ export default function BetsPage() {
                       value={form[bet.id]?.stake ?? ''}
                       onChange={(e) =>
                         handleFormChange(bet.id, 'stake', e.target.value)
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">Линия</p>
+                    <input
+                      type="number"
+                      step={LINE_STEP}
+                      placeholder={
+                        bet.line != null && bet.line !== ''
+                          ? String(bet.line)
+                          : '4.5'
+                      }
+                      className="w-28 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs"
+                      value={form[bet.id]?.line ?? ''}
+                      onChange={(e) =>
+                        handleFormChange(bet.id, 'line', e.target.value)
                       }
                     />
                   </div>

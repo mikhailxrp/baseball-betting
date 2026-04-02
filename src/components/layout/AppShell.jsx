@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { id: SECTION_SCHEDULE, label: "Расписание", href: "/" },
   { id: "bets", label: "Ставки", href: "/bets" },
   { id: "finance", label: "Финансы", href: "/finance" },
+  { id: "calculator", label: "Калькулятор", href: "/calculator" },
   { id: "odds", label: "Коэффициенты букмекеров", href: "/odds" },
   { id: "admin", label: "Управление системой", href: "/admin" },
 ];

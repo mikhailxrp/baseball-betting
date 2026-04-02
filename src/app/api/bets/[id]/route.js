@@ -4,9 +4,6 @@ const ALLOWED_RESULTS = new Set(['win', 'loss', 'push']);
 const RESULT_WIN = 'win';
 const RESULT_LOSS = 'loss';
 const RESULT_PUSH = 'push';
-const SYSTEM_MIN_BETS = 5;
-const SYSTEM_MIN_WIN_RATE = 0.6;
-
 function parseOptionalNumber(value) {
   if (value === null || value === undefined) return value;
   const n = typeof value === 'string' ? parseFloat(value) : value;
@@ -74,11 +71,15 @@ export async function PATCH(request, { params }) {
       update.amount = parseOptionalNumber(body.amount);
     }
 
+    if (body.line !== undefined && body.line !== null) {
+      update.line = parseOptionalNumber(body.line);
+    }
+
     const { data: updatedBet, error } = await supabase
       .from('bets')
       .update(update)
       .eq('id', id)
-      .select('id, game_id, result, odds, amount')
+      .select('id, game_id, result, odds, amount, team_id, line')
       .single();
     if (error) throw error;
 
@@ -113,45 +114,13 @@ export async function PATCH(request, { params }) {
     });
     if (bankInsertError) throw bankInsertError;
 
-    const { data: betTeamRow, error: betTeamError } = await supabase
-      .from('bets')
-      .select('team_id')
-      .eq('id', updatedBet.id)
-      .single();
-    if (betTeamError) throw betTeamError;
-
-    const teamId = betTeamRow?.team_id ?? null;
+    const teamId = updatedBet?.team_id ?? null;
     if (teamId != null) {
-      const { data: teamBets, error: teamBetsError } = await supabase
-        .from('bets')
-        .select('result')
-        .eq('team_id', teamId)
-        .not('result', 'is', null);
-      if (teamBetsError) throw teamBetsError;
-
-      const rows = Array.isArray(teamBets) ? teamBets : [];
-      const betsCount = rows.length;
-      const wins = rows.filter((row) => row.result === RESULT_WIN).length;
-      const losses = rows.filter((row) => row.result === RESULT_LOSS).length;
-      const settledWinLoss = wins + losses;
-      const winRate = settledWinLoss > 0 ? wins / settledWinLoss : null;
-      const overHitRate = betsCount > 0 ? wins / betsCount : 0;
-      const selectedForSystem =
-        betsCount >= SYSTEM_MIN_BETS &&
-        winRate != null &&
-        winRate >= SYSTEM_MIN_WIN_RATE;
-
-      const { error: teamUpdateError } = await supabase
-        .from('teams')
-        .update({
-          bets_count: betsCount,
-          win_rate: winRate,
-          over_hit_rate: overHitRate,
-          selected_for_system: selectedForSystem,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', teamId);
-      if (teamUpdateError) throw teamUpdateError;
+      const { error: teamStatsRpcError } = await supabase.rpc(
+        'recalculate_team_stats',
+        { p_team_id: teamId },
+      );
+      if (teamStatsRpcError) throw teamStatsRpcError;
     }
 
     return Response.json({ success: true });

@@ -144,7 +144,54 @@ export async function upsertTeamsAndGames(games) {
 }
 
 /**
- * Матчи за дату с названиями команд (вложенные объекты home_team / away_team).
+ * Собирает map MLB id питчера → имя из pitcher_stats (несколько сезонов → одно имя).
+ *
+ * @param {number[]} mlbPitcherIds
+ * @returns {Promise<Map<number, string | null>>}
+ */
+async function pitcherNamesByMlbId(mlbPitcherIds) {
+  const map = new Map();
+  const unique = [...new Set(mlbPitcherIds)].filter(
+    (id) => id != null && !Number.isNaN(Number(id)),
+  );
+  if (unique.length === 0) {
+    return map;
+  }
+
+  const { data: rows, error } = await supabase
+    .from("pitcher_stats")
+    .select("mlb_pitcher_id, pitcher_name")
+    .in("mlb_pitcher_id", unique);
+
+  if (error) {
+    throw error;
+  }
+
+  for (const row of rows ?? []) {
+    const pid = row.mlb_pitcher_id;
+    if (pid == null) {
+      continue;
+    }
+    const n = Number(pid);
+    if (Number.isNaN(n)) {
+      continue;
+    }
+    const raw = row.pitcher_name;
+    const name =
+      raw != null && String(raw).trim() !== "" ? String(raw) : null;
+    if (!map.has(n)) {
+      map.set(n, name);
+    } else if (map.get(n) == null && name != null) {
+      map.set(n, name);
+    }
+  }
+
+  return map;
+}
+
+/**
+ * Матчи за дату с названиями команд (вложенные объекты home_team / away_team)
+ * и именами питчеров из pitcher_stats (эквивалент LEFT JOIN; дедуп по сезонам в JS).
  *
  * @param {string} date — 'YYYY-MM-DD'
  * @returns {Promise<object[]>}
@@ -174,7 +221,39 @@ export async function getGamesFromDB(date) {
       throw error;
     }
 
-    return data ?? [];
+    const rows = data ?? [];
+    const pitcherIds = [];
+    for (const g of rows) {
+      if (g.home_pitcher_id != null) {
+        pitcherIds.push(Number(g.home_pitcher_id));
+      }
+      if (g.away_pitcher_id != null) {
+        pitcherIds.push(Number(g.away_pitcher_id));
+      }
+    }
+
+    const namesById = await pitcherNamesByMlbId(pitcherIds);
+
+    return rows.map((g) => {
+      const homeId =
+        g.home_pitcher_id != null ? Number(g.home_pitcher_id) : null;
+      const awayId =
+        g.away_pitcher_id != null ? Number(g.away_pitcher_id) : null;
+      const homePitcherName =
+        homeId != null && !Number.isNaN(homeId)
+          ? (namesById.get(homeId) ?? null)
+          : null;
+      const awayPitcherName =
+        awayId != null && !Number.isNaN(awayId)
+          ? (namesById.get(awayId) ?? null)
+          : null;
+
+      return {
+        ...g,
+        home_pitcher_name: homePitcherName,
+        away_pitcher_name: awayPitcherName,
+      };
+    });
   } catch (err) {
     console.error("getGamesFromDB:", err);
     throw err;
