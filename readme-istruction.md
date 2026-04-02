@@ -1,238 +1,231 @@
-# Инструкция по логике проекта (текущее состояние)
+# Baseball Betting App — описание системы
 
-Документ описывает, как устроено приложение: потоки данных, функции, запись в БД и взаимодействие частей. Актуально на момент составления по коду в `src/`.
-
----
-
-## 1. Назначение системы
-
-Приложение на **Next.js (App Router)** показывает **расписание MLB** за выбранную дату, сохраняет **команды и матчи** в **Supabase (PostgreSQL)**, по запросу подтягивает **статистику питчеров и команд** из **MLB Stats API** в кэш в БД, отображает **страницу матча** с данными из БД и отправляет **событие «проанализировать матч»** во внешний **n8n** через webhook.
+Документ описывает назначение приложения, бизнес-логику, используемые HTTP/API-запросы и структуру данных в Supabase (Postgres), как они следуют из кода репозитория.
 
 ---
 
-## 2. Внешние зависимости
+## 1. Что это за система
 
-| Источник | Назначение |
-|----------|------------|
-| `https://statsapi.mlb.com/api/v1` | Расписание (`/schedule`), статистика питчера (`/people/{id}/stats`), статистика команды (`/teams/{id}/stats`) |
-| Supabase | Клиент `@supabase/supabase-js`; таблицы `teams`, `games`, `pitcher_stats`, `team_stats` |
-| `N8N_WEBHOOK_URL` (env) | POST с `{ mlbGameId }` при нажатии «Анализировать» на странице матча |
+**Next.js-приложение** для работы с **MLB (бейсбол)**: расписание матчей, кэш статистики питчеров и команд из официального MLB Stats API, **рекомендации по ставкам** (записываются в БД внешним сценарием **n8n**), учёт **результатов ставок**, **банка**, сравнение линий с **The Odds API** и вспомогательный **калькулятор догона** (чисто клиентская математика, без БД).
 
-Переменные окружения для БД: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (см. `src/lib/supabase.js`).
+Логика «аналитики» ставок не зашита в этом репозитории: кнопка «Анализировать» дергает webhook n8n с `mlbGameId`; n8n должен записать строки в таблицу `bets`.
 
 ---
 
-## 3. Схема таблиц (ожидаемая)
+## 2. Поток данных (высокоуровнево)
 
-Кратко, как задокументировано в `src/lib/db.js`:
-
-- **`teams`** — `id`, `mlb_id` (unique), `name`, `wins`, `losses`, `updated_at`
-- **`games`** — `mlb_game_id` (unique), `date`, `home_team_id`, `away_team_id`, `home_pitcher_id`, `away_pitcher_id` (MLB id питчера, не FK), `series_game_number`, `games_in_series`, `status`
-- **`pitcher_stats`** — уникальная пара `(mlb_pitcher_id, season)`; показатели ERA, WHIP, FIP, K/9 и т.д., `updated_at`
-- **`team_stats`** — уникальная пара `(team_id, season)`; `team_id` — внутренний FK на `teams.id`; hitting/pitching агрегаты, `updated_at`
-
----
-
-## 4. Порядок и содержание записи в БД
-
-### 4.1. Цепочка «расписание → команды и матчи»
-
-**Триггер:** на главной после «Получить матчи» клиент вызывает `GET /api/schedule?date=YYYY-MM-DD`, затем **`upsertTeamsAndGames(games)`** из `src/lib/db.js` (импорт в клиентском `page.jsx`).
-
-**Порядок для каждого элемента массива `games`:**
-
-1. **`upsertTeamRow(home_team)`** → `teams` (upsert по `mlb_id`), возвращается внутренний `id`.
-2. **`upsertTeamRow(away_team)`** → `teams` (аналогично).
-3. Формируется строка **`games`**: связи `home_team_id` / `away_team_id`, MLB id питчеров в `home_pitcher_id` / `away_pitcher_id` (из `team.pitcher.mlb_id`, если есть), серия, **`status` всегда `"scheduled"`** при upsert из этого пути.
-4. Upsert в **`games`** по конфликту `mlb_game_id`.
-
-Итог: за один проход по списку матчей дня таблицы **`teams`** и **`games`** обновляются; **`pitcher_stats` / `team_stats`** здесь не пишутся.
-
-### 4.2. Цепочка «собрать статистику за день»
-
-**Триггер:** кнопка «Получить статистику» на главной → `GET /api/collect-stats?date=...` → **`collectDayStats(date)`** в `db.js`.
-
-**Шаг 1 — чтение:** выборка всех **`games`** с `date = выбранная дата` (поля с id питчеров и id команд).
-
-**Шаг 2 — питчеры:**
-
-- Собирается множество уникальных `home_pitcher_id` и `away_pitcher_id`.
-- Для каждого MLB id питчера: если в **`pitcher_stats`** есть хотя бы одна строка с `updated_at` **новее 24 часов**, питчер **пропускается** (кэш).
-- Иначе: **`getPitcherStats(pitcherId)`** (`mlb.js`) → MLB API → затем **`upsertPitcherStats`** → массовый upsert в **`pitcher_stats`** по `(mlb_pitcher_id, season)` (дедуп по ключу внутри одного вызова).
-
-**Шаг 3 — команды:**
-
-- Уникальные `home_team_id` / `away_team_id` (внутренние id из `teams`).
-- Для каждой строки **`teams`**: берётся **`mlb_id`** команды.
-- Если для пары `(team_id, season)` в **`team_stats`** уже есть запись с `updated_at` **новее 24 ч** и `season = TEAM_STATS_SEASON` (сейчас **2026**, константа в `mlb.js`), команда **пропускается**.
-- Иначе: **`getTeamStats(mlbTeamId)`** → два запроса к MLB (hitting season + pitching season) → **`upsertTeamStats(internalTeamId, ...)`** → **`team_stats`** по `(team_id, season)`.
-
-**Порядок по смыслу:** сначала обрабатываются все питчеры дня, затем все команды дня. Внутри каждой группы — итерация в произвольном порядке по Set/массиву, с пропуском «свежих» записей.
-
-### 4.3. Что в БД не пишется
-
-- **`GET /api/schedule`** — только ответ JSON клиенту; запись идёт отдельным вызовом `upsertTeamsAndGames` с клиента.
-- **`POST /api/analyze-game`** — **не пишет в БД**; только проксирует `mlbGameId` в n8n.
+1. **Расписание**: главная страница запрашивает `/api/schedule?date=YYYY-MM-DD&source=db`. Если в `games` на дату есть строки — показываются они. Иначе — `/api/schedule?date=...` без `source` → MLB Stats API → клиент вызывает `upsertTeamsAndGames()` (Server Action из `db.js`) и сохраняет `teams` + `games`.
+2. **Статистика дня**: `/api/collect-stats?date=...` подтягивает из MLB данные по питчерам и командам за матчи этой даты (с кэшем ~1 час по `updated_at` в `pitcher_stats` / `team_stats`).
+3. **Анализ матча**: POST `/api/analyze-game` с телом `{ "mlbGameId": number }` → POST на `N8N_WEBHOOK_URL` → n8n создаёт записи в `bets` (ожидаемое поведение).
+4. **Закрытие ставок**: страница «Ставки» → PATCH `/api/bets/[id]` (результат, коэф., сумма, линия) → пересчёт банка (`bank`) и при наличии `team_id` вызов RPC `recalculate_team_stats`.
+5. **Админ-пайплайн** (страница «Управление системой»): последовательно boxscore MLB → collect-stats → авто-результаты для тоталов → глобальный пересчёт полей команд в `teams`.
 
 ---
 
-## 5. Модули `src/lib`
+## 3. Внешние HTTP-запросы (не Next API)
 
-### 5.1. `supabase.js`
+| Источник | URL / назначение |
+|----------|------------------|
+| **MLB Stats API** | `GET https://statsapi.mlb.com/api/v1/schedule?...` — расписание (`transformSchedule`). |
+| | `GET .../people/{id}/stats?stats=yearByYear&group=pitching` — питчер по сезонам. |
+| | `GET .../teams/{id}/stats?stats=season&group=hitting&season=...` и `group=pitching` — команда. |
+| | `GET .../game/{gamePk}/boxscore` — счёт и batting-статы для обновления `games`. |
+| **The Odds API** | `GET .../v4/sports/baseball_mlb/odds?markets=totals&...` — список событий для матчинга. |
+| | `GET .../events/{eventId}/odds?markets=team_totals&...` — инд. тоталы команд. |
+| **n8n** | `POST N8N_WEBHOOK_URL` с JSON `{ "mlbGameId": number }`. |
 
-- **`createSupabaseOrThrow()`** — создаёт клиент, если заданы URL и anon key.
-- Экспорт **`supabase`** — ленивый Proxy: реальный клиент создаётся при первом обращении.
-
-### 5.2. `mlb.js`
-
-Константы: **`TEAM_STATS_SEASON`** (2026), **`MLB_STATS_API_BASE`**, **`FIP_CONSTANT`** (3.1) для расчёта FIP.
-
-| Функция | Назначение |
-|---------|------------|
-| **`computeFip(st)`** (внутр.) | FIP из HR, BB, K, IP |
-| **`parseStatNumber(value)`** (внутр.) | Безопасный разбор чисел из API |
-| **`mapSplitToSeason(split)`** (внутр.) | Один split yearByYear → объект сезона для питчера |
-| **`getPitcherStats(pitcherId)`** | `fetch` `/people/{id}/stats?stats=yearByYear&group=pitching` → `{ pitcherName, seasons[] }` |
-| **`getTeamStats(teamId)`** | Параллельно hitting и pitching за `TEAM_STATS_SEASON` → агрегат с OPS, runs/game, LOB, WHIP, ERA команды, saves, blown saves |
-
-### 5.3. `transformSchedule.js`
-
-| Функция | Назначение |
-|---------|------------|
-| **`mapProbablePitcher`** (внутр.) | probablePitcher → `{ mlb_id, name }` |
-| **`mapTeamSide`** (внутр.) | home/away: team id, name, wins/losses, pitcher |
-| **`gameTimeUtcFromGameDate`** (внутр.) | ISO из `gameDate` |
-| **`mapGame`** (внутр.) | Один game MLB → плоский объект для UI/БД |
-| **`transformSchedule(mlbApiResponse)`** | Обход `dates[].games[]`, только **`gameType === "R"`** (регулярка) |
-
-### 5.4. `db.js`
-
-Внутренние: **`upsertTeamRow`**, **`mlbPitcherIdOrNull`**.
-
-| Экспорт | Назначение |
-|---------|------------|
-| **`upsertTeamsAndGames(games)`** | Цикл: upsert двух команд, затем одна строка `games` |
-| **`getGamesFromDB(date)`** | SELECT `games` за дату с join имён `teams` (home/away). **Сейчас нигде не вызывается из приложения** — готовый API для списка из БД |
-| **`getGamePageData(mlbGameIdRaw)`** | Валидация id из URL; `games` по `mlb_game_id`; имена команд; `pitcher_stats` по id питчеров (сортировка сезонов по убыванию); `team_stats` за **`TEAM_STATS_SEASON`** для обеих команд |
-| **`upsertPitcherStats(pitcherId, pitcherName, statsArray)`** | Маппинг массива сезонов → upsert `pitcher_stats` |
-| **`upsertTeamStats(teamId, statsObj)`** | Одна строка `team_stats` (внутренний `team_id`) |
-| **`collectDayStats(date)`** | Описана в §4.2 |
-
-Константы: `GAME_STATUS_SCHEDULED`, окно свежести питчеров **24 ч**, паттерн id матча в URL.
-
-### 5.5. `utils.js`
-
-| Экспорт | Назначение |
-|---------|------------|
-| **`MOSCOW_TIMEZONE`** | `Europe/Moscow` |
-| **`cn(...inputs)`** | `clsx` + `tailwind-merge` для классов |
-| **`toMoscowTime(isoUtc)`** | Время матча для карточки расписания |
-| **`formatDateMoscow(date)`** | Дата календаря в ru-RU / Москва |
+Сезон командной статистики в коде: константа **`TEAM_STATS_SEASON`** в `src/lib/mlb.js` (сейчас **2026**).
 
 ---
 
-## 6. API routes
+## 4. Переменные окружения
 
-| Маршрут | Метод | Логика |
-|---------|-------|--------|
-| **`/api/schedule`** | GET | Параметр `date` (или «сегодня» по календарю **America/New_York**). Запрос к MLB schedule с `hydrate=probablePitcher,linescore,team`. **`transformSchedule`**, фильтр: только матчи с **`game_time_utc` в будущем** относительно момента запроса. Кэш маршрута: **`revalidate = 60`** сек. |
-| **`/api/collect-stats`** | GET | Параметр `date` или «сегодня» (NY). Вызов **`collectDayStats`**. Ответ: `pitchers_processed`, `teams_processed`. |
-| **`/api/analyze-game`** | POST | Тело JSON: **`mlbGameId`**. Проверка **`N8N_WEBHOOK_URL`**. POST на webhook с `{ mlbGameId }`. Ошибки 400/500/502 по ситуации. |
+| Переменная | Назначение |
+|------------|------------|
+| `NEXT_PUBLIC_SUPABASE_URL` | URL проекта Supabase. |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Anon key (клиент Supabase в API routes). |
+| `N8N_WEBHOOK_URL` | Webhook для запуска анализа матча (`/api/analyze-game`). |
+| `ODDS_API_KEY` | Ключ The Odds API (`/api/fetch-odds`). |
 
----
-
-## 7. Страницы и UI
-
-### 7.1. `app/page.jsx` (главная, client)
-
-- Обёртка **`AppShell`**, активная секция по умолчанию — расписание.
-- Календарь (локальный день) → **`fetchGames`**: `/api/schedule` → при успехе **`upsertTeamsAndGames`** (ошибки upsert только в `console`) → список карточек, ссылка **`/game/{mlb_game_id}`**.
-- **`fetchStats`**: `/api/collect-stats` для того же `date`, показ счётчиков обработанных питчеров/команд.
-- Секции «Анализ» и «Статистика» в навбаре — заглушка «скоро».
-
-### 7.2. `app/game/[id]/page.jsx` (server)
-
-- **`getGamePageData(id)`**; при `null` — **`notFound()`**; при throw — карточка «Ошибка загрузки».
-- Блоки статистики питчеров по сезонам и команд (OPS, runs/game за сезон из константы).
-- **`AnalyzeGameButton`**.
-
-### 7.3. `app/game/[id]/layout.jsx`
-
-- **`AppShell`** + кнопка «Назад» на `/`.
-
-### 7.4. `components/layout/AppShell.jsx` (client)
-
-Контекст: активная секция сайдбара, сворачивание сайдбара. Экспорт **`SECTION_*`**, **`SECTION_TITLES`**, **`useAppShell`**.
-
-### 7.5. `components/game/AnalyzeGameButton.jsx` (client)
-
-POST на **`/api/analyze-game`** с `{ mlbGameId }`, состояния loading/error.
-
-### 7.6. Прочие UI
-
-`badge`, `button`, `card`, `calendar` — презентационные компоненты; логики БД/MLB нет.
-
-### 7.7. `app/layout.jsx`
-
-Корневой layout, шрифты, `globals.css`.
+Секреты не хранить в коде — только в `.env` / `.env.local`.
 
 ---
 
-## 8. Сводная схема потоков
+## 5. Схемы таблиц Supabase (по использованию в коде)
 
-```mermaid
-flowchart LR
-  subgraph user [Пользователь]
-    H[Главная]
-    G[Страница матча]
-  end
+Ниже — поля, которые **реально читаются/пишутся** в приложении. Типы — логические (точные DDL могут быть в Supabase Dashboard).
 
-  subgraph next [Next.js]
-    S["/api/schedule"]
-    C["/api/collect-stats"]
-    A["/api/analyze-game"]
-  end
+### 5.1 `teams`
 
-  subgraph ext [Внешнее]
-    MLB[MLB Stats API]
-    N8N[n8n webhook]
-  end
+| Поле | Назначение |
+|------|------------|
+| `id` | PK, внутренний id (FK из `games`, `bets`, …). |
+| `mlb_id` | Уникальный id команды MLB; `upsert` по конфликту `mlb_id`. |
+| `name`, `wins`, `losses` | Из расписания MLB. |
+| `updated_at` | Метка обновления. |
+| `bets_count` | Число ставок с известным `result` по команде. |
+| `win_rate` | Доля выигрышей среди исходов win/loss (push не входит в знаменатель). |
+| `over_hit_rate` | `wins / bets_count` (в т.ч. с учётом всех исходов с результатом). |
+| `selected_for_system` | Флаг «команда подходит под систему» (пороги см. ниже). |
+| `attack_rating`, `defense_rating` | Строковые оценки `high` / `medium` / `low` из `team_stats` (только в `/api/admin/update-teams-stats`). |
 
-  subgraph db [Supabase]
-    T[teams]
-    GM[games]
-    PS[pitcher_stats]
-    TS[team_stats]
-  end
+### 5.2 `games`
 
-  H --> S
-  S --> MLB
-  H -->|upsertTeamsAndGames| T
-  H -->|upsertTeamsAndGames| GM
+| Поле | Назначение |
+|------|------------|
+| `id` | Внутренний PK (`game_id` в `bets`). |
+| `mlb_game_id` | Уникальный `gamePk` MLB; `upsert` по конфликту. |
+| `date` | Календарная дата матча `YYYY-MM-DD` (как в MLB `officialDate`). |
+| `home_team_id`, `away_team_id` | FK → `teams.id`. |
+| `home_pitcher_id`, `away_pitcher_id` | MLB id питчера (число, не FK). |
+| `series_game_number`, `games_in_series` | Серия. |
+| `status` | Например `Scheduled`, `Final` (фильтры в админке и odds). |
+| `game_time_utc`, `venue_name` | Время и стадион. |
+| `home_score`, `away_score`, `total_runs` | После boxscore-обновления. |
+| `home_hits`, `away_hits`, `home_hr`, `away_hr`, `home_lob`, `away_lob` | Доп. поля из boxscore. |
+| `odds_event_id` | Id события The Odds API (кэш для повторных запросов). |
 
-  H --> C
-  C --> GM
-  C --> PS
-  C --> TS
-  C --> MLB
+**Важно:** маршрут `update-game-results` выбирает только строки с **`status = 'Final'`**. Перевод игры в `Final` в этом репозитории не выполняется — это должно приходить из другого процесса или быть выставлено вручную в БД.
 
-  G -->|getGamePageData| GM
-  G --> T
-  G --> PS
-  G --> TS
-  G --> A
-  A --> N8N
-```
+### 5.3 `pitcher_stats`
+
+Уникальность: **`(mlb_pitcher_id, season)`**.
+
+| Поле | Назначение |
+|------|------------|
+| `mlb_pitcher_id`, `season` | Ключ. |
+| `pitcher_name` | Имя. |
+| `era`, `whip`, `wins`, `losses`, `games_started`, `innings_pitched` | Питчинг. |
+| `k_per9`, `bb_per9`, `hr_per9`, `fip` | Расчётные/из API. |
+| `updated_at` | Для кэша при `collect-stats` (~1 ч). |
+
+### 5.4 `team_stats`
+
+Уникальность: **`(team_id, season)`**; `team_id` → `teams.id`.
+
+| Поле | Назначение |
+|------|------------|
+| `team_id`, `season` | Ключ. |
+| `games_played`, `runs_per_game`, `ops`, `lob` | Hitting. |
+| `whip`, `team_era`, `saves`, `blown_saves` | Pitching агрегаты команды. |
+| `updated_at` | Кэш. |
+
+### 5.5 `bets`
+
+| Поле | Назначение |
+|------|------------|
+| `id` | PK. |
+| `game_id` | FK → `games.id`. |
+| `team_id` | FK → `teams.id` (для инд. тоталов и привязки статистики команды). |
+| `bet_type` | `total_over`, `total_under`, `ind_total_over`, `ind_total_under`, `max_inning`, … |
+| `line` | Линия тотала и т.п. |
+| `confidence` | `high` / `medium` / `low`. |
+| `reasoning` | Текст от агента/n8n. |
+| `result` | `win` / `loss` / `push` / `null`. |
+| `odds`, `amount` | Коэффициент букмекера и сумма (для банка и финансов). |
+| `entry_mode` | Режим ввода (если задан сценарием). |
+| `estimated_probability` | Оценка вероятности в %. |
+| `created_at` | Сортировка рекомендаций. |
+
+Авто-обновление `result` в коде только для **`total_over`** и **`total_under`**: сравнение суммы ранов (`home_score + away_score`) с `line`.
+
+### 5.6 `bank`
+
+Журнал операций; **текущий баланс** — последняя запись по `id`.
+
+| Поле | Назначение |
+|------|------------|
+| `id` | Автоинкремент (порядок важен). |
+| `date` | Дата операции / дата матча. |
+| `balance` | Баланс после операции. |
+| `change` | Изменение (выигрыш: `amount * (odds - 1)`, проигрыш: `-amount`, push: `0`). |
+| `comment` | `win`/`loss`/`push` или `deposit`/`withdraw`. |
+| `bet_id` | Ссылка на ставку или `null` для депозита/вывода. |
+
+### 5.7 `bookmaker_lines`
+
+Строки по рынку и команде для сравнения с оценкой агента.
+
+| Поле | Назначение |
+|------|------------|
+| `game_id`, `team_id` | FK. |
+| `market` | Например `ind_total_over` (пишется из `fetch-odds`). |
+| `outcome` | Например `Over`. |
+| `line`, `best_odds`, `best_bookmaker` | Лучшая линия среди БК. |
+| `implied_prob` | `1/odds` в процентах (округление в коде). |
+| `fetched_at` | Для сортировки на UI. |
 
 ---
 
-## 9. Важные нюансы для разработки
+## 6. RPC в Postgres (миграция в репозитории)
 
-1. **Клиентский вызов `upsertTeamsAndGames`:** используется anon key Supabase в браузере — убедитесь, что RLS и политики в Supabase соответствуют желаемой безопасности.
-2. **Синхронизация дат:** расписание на главной строится от **локального дня календаря** пользователя (`dateToScheduleParam`), а «сегодня» по умолчанию в API schedule/collect-stats — **America/New_York** (игровой день MLB). При несовпадении timezone возможны расхождения «какой это день».
-3. **`collect-stats` без явной валидации формата `date` в route:** при неверной строке упадёт **`collectDayStats`** с ошибкой 500 (в отличие от `/api/schedule`, где формат проверяется).
-4. **Страница матча** читает только то, что уже есть в БД; если матч не сохраняли через главную, **`getGamePageData`** вернёт `null` → 404.
+**`recalculate_team_stats(p_team_id bigint)`** (`supabase/migrations/20260402000000_recalculate_team_stats.sql`):
+
+- Считает по `bets` для команды с `result IS NOT NULL`: всего, `win`, `push`.
+- **`win_rate`** = `wins / (total - pushes)`.
+- **`over_hit_rate`** = `wins / total`.
+- **`selected_for_system`** = `total >= 10` и `win_rate >= 0.60`.
+- Обновляет `teams`: `bets_count`, `win_rate`, `over_hit_rate`, `selected_for_system`, `updated_at`.
+
+Вызывается из **PATCH `/api/bets/[id]`** после успешного обновления ставки и записи в `bank`.
+
+**Расхождение с админкой:** POST `/api/admin/update-teams-stats` пересчитывает все команды с порогом **`bets_count >= 5`** и `win_rate >= 0.60`, плюс выставляет `attack_rating` / `defense_rating`. После ручного закрытия ставки метрики команды обновляются через RPC (**10** ставок). Имеет смысл со временем унифицировать пороги.
 
 ---
 
-*Документ отражает код репозитория; при изменении схемы БД или маршрутов его стоит обновить.*
+## 7. Маршруты Next.js App Router (`/api/*`)
+
+| Метод и путь | Query / тело | Действие |
+|--------------|--------------|----------|
+| **GET** `/api/schedule` | `date=YYYY-MM-DD`, опционально `source=db` | `source=db`: матчи из БД с именами питчеров. Иначе: MLB schedule → JSON `games`. |
+| **GET** `/api/collect-stats` | `date` | `collectDayStats` → MLB → `pitcher_stats`, `team_stats`. |
+| **POST** `/api/analyze-game` | `{ "mlbGameId": number }` | Прокси на n8n webhook. |
+| **GET** `/api/game-bets` | `gameId` = внутренний `games.id` | Список `bets` по матчу. |
+| **GET** `/api/bets-by-date` | `date` | Ставки на дату: `open` (нет результата), `closed` (есть результат и odds). |
+| **PATCH** `/api/bets/[id]` | `result`, `odds`, `amount`, `line` | Обновление ставки, запись в `bank`, RPC `recalculate_team_stats`. |
+| **GET** `/api/finance` | — | Агрегаты по всем закрытым ставкам с `odds`: прибыль, ROI, винрейт, разрез по команде+типу. |
+| **GET** `/api/bank` | — | Последняя запись `bank` (текущий баланс). |
+| **POST** `/api/bank` | `{ "amount", "type": "deposit"|"withdraw" }` | Новая запись банка. |
+| **GET** `/api/bank-history` | — | Вся история `bank` с датой из связанного матча где возможно. |
+| **GET** `/api/bookmaker-lines` | — | Актуальные линии (игры не `Final`) + обогащение данными ставок. |
+| **GET** `/api/fetch-odds` | — | Тянет коэффициенты The Odds API для открытых `ind_total_over`, пишет `bookmaker_lines`, обновляет `odds_event_id`. |
+| **GET** `/api/bet-estimates` | — | Последние `estimated_probability` по парам `(game_id, bet_type)` для `total_over` / `total_under` (API есть; UI в репозитории не подключён). |
+| **POST** `/api/admin/update-game-results` | `{ "date" }` | Для игр с `status=Final` на дату — boxscore → обновление счёта и статов в `games`. |
+| **POST** `/api/admin/update-bet-results` | `{ "date" }` | Для финальных игр с счётом — авто `result` для `total_over` / `total_under`. |
+| **POST** `/api/admin/update-teams-stats` | — | Пересчёт полей `teams` по всем ставкам + рейтинги атаки/защиты из `team_stats`. |
+
+Кэш: у `/api/schedule` задан **`revalidate = 60`** (ISR-подсказка Next).
+
+---
+
+## 8. Страницы UI (навигация)
+
+- **`/`** — расписание, загрузка матчей, переход на `/game/[mlb_game_id]`, кнопка сбора статистики.
+- **`/game/[id]`** — `id` = **MLB gamePk**; статистика питчеров/команд из БД + рекомендации + «Анализировать».
+- **`/bets`** — ставки по дате, ввод коэф./суммы/линии, WIN/LOSS/PUSH.
+- **`/finance`** — дашборд, банк, график истории, таблица по командам.
+- **`/calculator`** — догон (без сервера).
+- **`/odds`** — синхронизация с The Odds API и таблица перевеса (оценка агента vs implied).
+- **`/admin`** — четыре шага пайплайна (см. раздел 2).
+
+---
+
+## 9. Заложенная логика «системы отбора» и финансов
+
+- **Отбор команд для системы** (два механизма, см. RPC vs admin): ставок достаточно много и стабильный `win_rate` по закрытым исходам (без push в знаменателе для win_rate).
+- **Рейтинги атаки/защиты** (только admin): пороги по `ops`, `runs_per_game`, `team_era`, `whip` из `team_stats` за текущий сезон в коде.
+- **Банк**: каждое закрытие ставки через PATCH добавляет **одну** строку в `bank` с новым балансом; депозит/вывод — отдельные операции без `bet_id`.
+- **Сравнение с букмекером**: для открытых `ind_total_over` подтягиваются `team_totals`, лучший Over по команде; **edge** на странице odds = `estimated_probability - implied_prob`.
+
+---
+
+## 10. Как проверить себя после изменений
+
+1. Расписание: открыть `/`, выбрать дату, «Получить матчи» — в Supabase появляются/обновляются `teams`, `games`.
+2. Статистика: «Получить статистику» или GET `/api/collect-stats?date=...` — растут `pitcher_stats`, `team_stats`.
+3. Анализ: при настроенном n8n и таблице `bets` — POST `/api/analyze-game` и обновление страницы матча.
+4. Финансы: закрыть ставку на `/bets` — изменяются `bets`, `bank`, при `team_id` — поля команды через RPC.
+
+---
+
+*Файл сгенерирован по состоянию кода репозитория; при изменении схемы Supabase сверяйте с Dashboard и миграциями.*
