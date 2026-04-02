@@ -4,6 +4,9 @@ import { getPitcherStats, getTeamStats, TEAM_STATS_SEASON } from "@/lib/mlb.js";
 const GAME_STATUS_SCHEDULED = "scheduled";
 const PITCHER_STATS_FRESH_WINDOW_MS = 24 * 60 * 60 * 1000;
 
+/** Параметр маршрута `/game/[id]` — числовой MLB game id. */
+const MLB_GAME_ID_ROUTE_PATTERN = /^\d+$/;
+
 /**
  * Ожидаемая схема (Supabase / Postgres):
  * - teams: id, mlb_id (unique), name, wins, losses, updated_at
@@ -14,7 +17,7 @@ const PITCHER_STATS_FRESH_WINDOW_MS = 24 * 60 * 60 * 1000;
  *   era, whip, wins, losses, games_started, innings_pitched,
  *   k_per9, bb_per9, hr_per9, fip, updated_at
  * - team_stats: (team_id, season) unique — team_id FK teams.id,
- *   games_played, runs_per_game, ops, updated_at
+ *   games_played, runs_per_game, ops, lob, whip, team_era, saves, blown_saves, updated_at
  */
 
 /**
@@ -117,7 +120,9 @@ export async function upsertTeamsAndGames(games) {
           seriesTotal != null && !Number.isNaN(Number(seriesTotal))
             ? Number(seriesTotal)
             : null,
-        status: GAME_STATUS_SCHEDULED,
+        status: g.status ?? GAME_STATUS_SCHEDULED,
+        game_time_utc: g.game_time_utc ?? null,
+        venue_name: g.venue_name ?? null,
       };
 
       const { error: gameError } = await supabase
@@ -172,6 +177,162 @@ export async function getGamesFromDB(date) {
     return data ?? [];
   } catch (err) {
     console.error("getGamesFromDB:", err);
+    throw err;
+  }
+}
+
+/**
+ * Данные для страницы матча по `games.mlb_game_id`.
+ *
+ * @param {string} mlbGameIdRaw — сегмент URL
+ * @returns {Promise<null | {
+ *   mlb_game_id: number,
+ *   game: object,
+ *   awayTeamName: string,
+ *   homeTeamName: string,
+ *   awayPitcherStats: object[],
+ *   homePitcherStats: object[],
+ *   awayTeamStats: object | null,
+ *   homeTeamStats: object | null,
+ * }>}
+ */
+export async function getGamePageData(mlbGameIdRaw) {
+  try {
+    if (mlbGameIdRaw == null || typeof mlbGameIdRaw !== "string") {
+      return null;
+    }
+    const trimmed = mlbGameIdRaw.trim();
+    if (!MLB_GAME_ID_ROUTE_PATTERN.test(trimmed)) {
+      return null;
+    }
+    const mlbGameId = Number(trimmed);
+
+    const { data: game, error: gameError } = await supabase
+      .from("games")
+      .select(
+        "id, home_team_id, away_team_id, home_pitcher_id, away_pitcher_id, series_game_number, games_in_series",
+      )
+      .eq("mlb_game_id", mlbGameId)
+      .maybeSingle();
+
+    if (gameError) {
+      throw gameError;
+    }
+    if (game == null) {
+      return null;
+    }
+
+    const teamIds = [game.home_team_id, game.away_team_id].filter((tid) => {
+      const n = Number(tid);
+      return !Number.isNaN(n);
+    });
+
+    let teamsList = [];
+    if (teamIds.length > 0) {
+      const { data: teams, error: teamsError } = await supabase
+        .from("teams")
+        .select("id, name")
+        .in("id", teamIds);
+
+      if (teamsError) {
+        throw teamsError;
+      }
+      teamsList = teams ?? [];
+    }
+
+    const teamById = new Map(
+      teamsList.map((t) => [
+        Number(t.id),
+        t.name != null ? String(t.name) : "",
+      ]),
+    );
+
+    const awayTeamName = teamById.get(Number(game.away_team_id)) ?? "—";
+    const homeTeamName = teamById.get(Number(game.home_team_id)) ?? "—";
+
+    const pitcherIds = [game.away_pitcher_id, game.home_pitcher_id]
+      .map((id) => (id == null ? null : Number(id)))
+      .filter((id) => id != null && !Number.isNaN(id));
+
+    let awayPitcherStats = [];
+    let homePitcherStats = [];
+
+    if (pitcherIds.length > 0) {
+      const { data: pitcherRows, error: pitcherError } = await supabase
+        .from("pitcher_stats")
+        .select("mlb_pitcher_id, season, era, fip, whip, pitcher_name")
+        .in("mlb_pitcher_id", pitcherIds);
+
+      if (pitcherError) {
+        throw pitcherError;
+      }
+
+      const rows = pitcherRows ?? [];
+
+      const seasonSortKey = (season) => {
+        const n = Number(season);
+        return Number.isNaN(n) ? 0 : n;
+      };
+
+      const sortDesc = (a, b) =>
+        seasonSortKey(b.season) - seasonSortKey(a.season);
+
+      const awayId =
+        game.away_pitcher_id != null ? Number(game.away_pitcher_id) : null;
+      const homeId =
+        game.home_pitcher_id != null ? Number(game.home_pitcher_id) : null;
+
+      awayPitcherStats =
+        awayId != null && !Number.isNaN(awayId)
+          ? rows
+              .filter((r) => Number(r.mlb_pitcher_id) === awayId)
+              .sort(sortDesc)
+          : [];
+      homePitcherStats =
+        homeId != null && !Number.isNaN(homeId)
+          ? rows
+              .filter((r) => Number(r.mlb_pitcher_id) === homeId)
+              .sort(sortDesc)
+          : [];
+    }
+
+    let awayTeamStats = null;
+    let homeTeamStats = null;
+
+    if (teamIds.length > 0) {
+      const { data: teamStatRows, error: teamStatsError } = await supabase
+        .from("team_stats")
+        .select("team_id, season, ops, runs_per_game")
+        .in("team_id", teamIds)
+        .eq("season", TEAM_STATS_SEASON);
+
+      if (teamStatsError) {
+        throw teamStatsError;
+      }
+
+      const statsList = teamStatRows ?? [];
+      const findStat = (tid) => {
+        const n = Number(tid);
+        return statsList.find((s) => Number(s.team_id) === n) ?? null;
+      };
+
+      awayTeamStats = findStat(game.away_team_id);
+      homeTeamStats = findStat(game.home_team_id);
+    }
+
+    return {
+      mlb_game_id: mlbGameId,
+      gameInternalId: game.id,
+      game,
+      awayTeamName,
+      homeTeamName,
+      awayPitcherStats,
+      homePitcherStats,
+      awayTeamStats,
+      homeTeamStats,
+    };
+  } catch (err) {
+    console.error("getGamePageData:", err);
     throw err;
   }
 }
@@ -294,6 +455,11 @@ export async function upsertTeamStats(teamId, statsObj) {
       games_played: s.games_played,
       runs_per_game: s.runs_per_game,
       ops: s.ops,
+      lob: s.lob ?? null,
+      whip: s.whip ?? null,
+      team_era: s.team_era ?? null,
+      saves: s.saves ?? null,
+      blown_saves: s.blown_saves ?? s.blownSaves ?? null,
       updated_at: updatedAt,
     };
 
@@ -453,9 +619,7 @@ export async function collectDayStats(date) {
           continue;
         }
 
-        console.log("getTeamStats: mlbTeamId =", mlbTeamId);
         const teamStats = await getTeamStats(mlbTeamId);
-        console.log("getTeamStats result:", teamStats);
         await upsertTeamStats(internalId, teamStats);
         teamsProcessed += 1;
       }
@@ -470,4 +634,23 @@ export async function collectDayStats(date) {
     console.error("collectDayStats:", err);
     throw err;
   }
+}
+
+/**
+ * Получает рекомендации по ставкам для матча.
+ *
+ * @param {unknown} gameInternalId — внутренний id из таблицы games
+ * @returns {Promise<object[]>}
+ */
+export async function getGameBets(gameInternalId) {
+  const { data, error } = await supabase
+    .from("bets")
+    .select(
+      "id, bet_type, team_id, line, confidence, reasoning, result, odds, amount, entry_mode, created_at, estimated_probability",
+    )
+    .eq("game_id", gameInternalId)
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+  return data ?? [];
 }

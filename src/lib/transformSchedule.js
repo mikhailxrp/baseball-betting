@@ -58,6 +58,7 @@ function mapGame(game) {
     day_night: game.dayNight,
     venue_name: game.venue?.name,
     game_time_utc: gameTimeUtcFromGameDate(game.gameDate),
+    status: game.status?.abstractGameState ?? 'Scheduled',
     home_team: mapTeamSide(game.teams?.home),
     away_team: mapTeamSide(game.teams?.away)
   };

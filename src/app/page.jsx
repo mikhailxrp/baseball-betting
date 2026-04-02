@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,26 +12,17 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
+import {
+  AppShell,
+  useAppShell,
+  SECTION_TITLES,
+  SECTION_SCHEDULE,
+} from "@/components/layout/AppShell.jsx";
 import { upsertTeamsAndGames } from "@/lib/db.js";
-import { cn, toMoscowTime } from "@/lib/utils";
+import { toMoscowTime } from "@/lib/utils";
+import Link from "next/link";
 
 const PITCHER_TBD = "TBD";
-
-const SECTION_SCHEDULE = "schedule";
-const SECTION_ANALYSIS = "analysis";
-const SECTION_STATS = "stats";
-
-const NAV_ITEMS = [
-  { id: SECTION_SCHEDULE, label: "Расписание" },
-  { id: SECTION_ANALYSIS, label: "Анализ" },
-  { id: SECTION_STATS, label: "Статистика" },
-];
-
-const SECTION_TITLES = {
-  [SECTION_SCHEDULE]: "Расписание",
-  [SECTION_ANALYSIS]: "Анализ",
-  [SECTION_STATS]: "Статистика",
-};
 
 function startOfToday() {
   const d = new Date();
@@ -48,14 +38,13 @@ function dateToScheduleParam(d) {
   return `${y}-${m}-${day}`;
 }
 
-export default function Home() {
+function HomeContent() {
+  const { activeSection } = useAppShell();
+
   const [date, setDate] = useState(startOfToday);
   const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [activeSection, setActiveSection] = useState(SECTION_SCHEDULE);
 
   const [statsLoading, setStatsLoading] = useState(false);
   const [statsResult, setStatsResult] = useState(null);
@@ -65,9 +54,31 @@ export default function Home() {
     setError(null);
     try {
       const dateStr = dateToScheduleParam(date);
-      const res = await fetch(
-        `/api/schedule?date=${encodeURIComponent(dateStr)}`,
+      // Шаг 1: пробуем БД
+      const dbRes = await fetch(
+        `/api/schedule?date=${encodeURIComponent(dateStr)}&source=db`,
       );
+
+      let dbData = {};
+      if (dbRes.ok) {
+        try {
+          dbData = await dbRes.json();
+        } catch {
+          dbData = {};
+        }
+      } else {
+        // Если БД недоступна/невалидна — не блокируем UI, идем в MLB
+        console.warn("schedule source=db error:", dbRes.status);
+      }
+
+      const dbGames = Array.isArray(dbData.games) ? dbData.games : [];
+      if (dbGames.length > 0) {
+        setGames(dbGames);
+        return;
+      }
+
+      // Шаг 2: БД пустая — идём в MLB API (текущее поведение)
+      const res = await fetch(`/api/schedule?date=${encodeURIComponent(dateStr)}`);
       let data = {};
       try {
         data = await res.json();
@@ -139,174 +150,126 @@ export default function Home() {
   }, [date]);
 
   return (
-    <div className="flex h-screen min-h-0 w-full font-sans">
-      <aside
-        className={cn(
-          "flex shrink-0 flex-col border-r border-white/15 bg-medium-slate transition-[width] duration-200 ease-out",
-          sidebarCollapsed ? "w-14" : "w-56",
-        )}
-      >
-        <div
-          className={cn(
-            "flex items-center p-2",
-            sidebarCollapsed ? "justify-center" : "justify-end",
-          )}
-        >
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label={sidebarCollapsed ? "Развернуть панель" : "Свернуть панель"}
-            className="text-white hover:bg-soft-periwinkle hover:text-white"
-            onClick={() => setSidebarCollapsed((c) => !c)}
-          >
-            {sidebarCollapsed ? (
-              <ChevronRight className="size-5" />
-            ) : (
-              <ChevronLeft className="size-5" />
-            )}
-          </Button>
-        </div>
+    <>
+      <h1 className="text-2xl font-bold tracking-tight text-foreground">
+        {SECTION_TITLES[activeSection] ?? activeSection}
+      </h1>
 
-        {!sidebarCollapsed ? (
-          <nav className="flex flex-col gap-1 px-2 pb-4">
-            {NAV_ITEMS.map((item) => (
-              <Button
-                key={item.id}
-                type="button"
-                variant="ghost"
-                className={cn(
-                  "w-full justify-start text-white hover:bg-soft-periwinkle hover:text-white",
-                  activeSection === item.id && "bg-soft-periwinkle text-white",
-                )}
-                onClick={() => setActiveSection(item.id)}
-              >
-                {item.label}
-              </Button>
-            ))}
-          </nav>
-        ) : null}
-      </aside>
+      {activeSection === SECTION_SCHEDULE ? (
+        <>
+          <section className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end sm:gap-6">
+            <Calendar
+              mode="single"
+              selected={date}
+              onSelect={(d) => {
+                if (d) {
+                  setDate(d);
+                  setStatsResult(null);
+                }
+              }}
+              className="rounded-lg border border-border bg-background shadow-xs"
+            />
+            <Button type="button" onClick={() => void fetchGames()}>
+              Получить матчи
+            </Button>
+          </section>
 
-      <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto bg-muted">
-        <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 p-6">
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            {SECTION_TITLES[activeSection] ?? activeSection}
-          </h1>
+          {loading ? (
+            <p className="text-sm text-muted-foreground">Загрузка...</p>
+          ) : null}
 
-          {activeSection === SECTION_SCHEDULE ? (
-            <>
-              <section className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end sm:gap-6">
-                <Calendar
-                  mode="single"
-                  selected={date}
-                  onSelect={(d) => {
-                    if (d) {
-                      setDate(d);
-                      setStatsResult(null);
-                    }
-                  }}
-                  className="rounded-lg border border-border bg-background shadow-xs"
-                />
-                <Button type="button" onClick={() => void fetchGames()}>
-                  Получить матчи
-                </Button>
-              </section>
+          {error ? (
+            <p className="text-sm text-destructive" role="alert">
+              {error}
+            </p>
+          ) : null}
 
-              {loading ? (
-                <p className="text-sm text-muted-foreground">Загрузка...</p>
-              ) : null}
+          <div className="grid grid-cols-2 gap-4">
+            {games.map((game) => {
+              const awayName = game.away_team?.name ?? "—";
+              const homeName = game.home_team?.name ?? "—";
+              const awayPitcher = game.away_team?.pitcher?.name ?? PITCHER_TBD;
+              const homePitcher = game.home_team?.pitcher?.name ?? PITCHER_TBD;
+              const seriesNum = game.series_game_number;
+              const seriesTotal = game.games_in_series;
+              const showSeriesBadge =
+                seriesNum != null &&
+                seriesTotal != null &&
+                !Number.isNaN(Number(seriesNum)) &&
+                !Number.isNaN(Number(seriesTotal));
 
-              {error ? (
-                <p className="text-sm text-destructive" role="alert">
-                  {error}
-                </p>
-              ) : null}
-
-              <div className="grid grid-cols-2 gap-4">
-                {games.map((game) => {
-                  const awayName = game.away_team?.name ?? "—";
-                  const homeName = game.home_team?.name ?? "—";
-                  const awayPitcher = game.away_team?.pitcher?.name ?? PITCHER_TBD;
-                  const homePitcher = game.home_team?.pitcher?.name ?? PITCHER_TBD;
-                  const seriesNum = game.series_game_number;
-                  const seriesTotal = game.games_in_series;
-                  const showSeriesBadge =
-                    seriesNum != null &&
-                    seriesTotal != null &&
-                    !Number.isNaN(Number(seriesNum)) &&
-                    !Number.isNaN(Number(seriesTotal));
-
-                  return (
-                    <Card
-                      key={String(game.mlb_game_id)}
-                      size="sm"
-                      className="bg-white shadow-sm ring-1 ring-black/5"
-                    >
-                      <CardHeader className="border-b border-border pb-4">
-                        <CardTitle className="text-base font-bold">
-                          {awayName} @ {homeName}
-                        </CardTitle>
-                        <p className="text-sm text-muted-foreground">
-                          {toMoscowTime(game.game_time_utc)}
-                        </p>
-                      </CardHeader>
-                      <CardContent className="flex flex-col gap-2 pt-4">
-                        <p className="text-sm">
-                          <span className="text-muted-foreground">
-                            Питчер away:{" "}
-                          </span>
-                          {awayPitcher}
-                        </p>
-                        <p className="text-sm">
-                          <span className="text-muted-foreground">
-                            Питчер home:{" "}
-                          </span>
-                          {homePitcher}
-                        </p>
-                        {showSeriesBadge ? (
-                          <Badge variant="secondary" className="w-fit">
-                            Матч {seriesNum} из {seriesTotal}
-                          </Badge>
-                        ) : null}
-                      </CardContent>
-                      <CardFooter className="border-t border-border pt-4">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => {
-                            console.log(game);
-                          }}
-                        >
-                          Анализировать
-                        </Button>
-                      </CardFooter>
-                    </Card>
-                  );
-                })}
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2 pt-2">
-                <Button
-                  type="button"
-                  disabled={games.length === 0 || statsLoading}
-                  onClick={() => void fetchStats()}
+              return (
+                <Card
+                  key={String(game.mlb_game_id)}
+                  size="sm"
+                  className="bg-white shadow-sm ring-1 ring-black/5"
                 >
-                  {statsLoading ? "Загрузка..." : "Получить статистику"}
-                </Button>
-                {statsResult != null ? (
-                  <Badge variant="secondary">
-                    Питчеры: {statsResult.pitchers_processed} | Команды:{" "}
-                    {statsResult.teams_processed}
-                  </Badge>
-                ) : null}
-              </div>
-            </>
-          ) : (
-            <p className="text-muted-foreground">Раздел скоро будет доступен.</p>
-          )}
-        </div>
-      </main>
-    </div>
+                  <CardHeader className="border-b border-border pb-4">
+                    <CardTitle className="text-base font-bold">
+                      {awayName} @ {homeName}
+                    </CardTitle>
+                    <p className="text-sm text-muted-foreground">
+                      {toMoscowTime(game.game_time_utc)}
+                    </p>
+                  </CardHeader>
+                  <CardContent className="flex flex-col gap-2 pt-4">
+                    <p className="text-sm">
+                      <span className="text-muted-foreground">
+                        Питчер away:{" "}
+                      </span>
+                      {awayPitcher}
+                    </p>
+                    <p className="text-sm">
+                      <span className="text-muted-foreground">
+                        Питчер home:{" "}
+                      </span>
+                      {homePitcher}
+                    </p>
+                    {showSeriesBadge ? (
+                      <Badge variant="secondary" className="w-fit">
+                        Матч {seriesNum} из {seriesTotal}
+                      </Badge>
+                    ) : null}
+                  </CardContent>
+                  <CardFooter className="border-t border-border pt-4">
+                    <Link href={`/game/${game.mlb_game_id}`}>
+                      <Button type="button" variant="outline">
+                        Посмотреть матч
+                      </Button>
+                    </Link>
+                  </CardFooter>
+                </Card>
+              );
+            })}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 pt-2">
+            <Button
+              type="button"
+              disabled={games.length === 0 || statsLoading}
+              onClick={() => void fetchStats()}
+            >
+              {statsLoading ? "Загрузка..." : "Получить статистику"}
+            </Button>
+            {statsResult != null ? (
+              <Badge variant="secondary">
+                Питчеры: {statsResult.pitchers_processed} | Команды:{" "}
+                {statsResult.teams_processed}
+              </Badge>
+            ) : null}
+          </div>
+        </>
+      ) : (
+        <p className="text-muted-foreground">Раздел скоро будет доступен.</p>
+      )}
+    </>
+  );
+}
+
+export default function Home() {
+  return (
+    <AppShell>
+      <HomeContent />
+    </AppShell>
   );
 }

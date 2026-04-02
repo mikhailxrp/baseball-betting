@@ -2,7 +2,11 @@ const MLB_STATS_API_BASE = "https://statsapi.mlb.com/api/v1";
 const PITCHER_STATS_QUERY = "stats=yearByYear&group=pitching";
 const TEAM_STATS_QUERY = "stats=season&group=hitting";
 
-/** Сезон для team hitting stats (MLB Stats API). */
+function buildTeamPitchingStatsQuery() {
+  return `stats=season&group=pitching&season=${TEAM_STATS_SEASON}`;
+}
+
+/** Сезон для team hitting / pitching stats (MLB Stats API). */
 export const TEAM_STATS_SEASON = 2026;
 
 const FIP_CONSTANT = 3.1;
@@ -155,7 +159,7 @@ export async function getPitcherStats(pitcherId) {
 }
 
 /**
- * Сезонная hitting-статистика команды из MLB Stats API.
+ * Сезонная hitting- и pitching-статистика команды из MLB Stats API.
  *
  * @param {unknown} teamId — MLB team id (как в /teams/{id})
  * @returns {Promise<{
@@ -163,6 +167,11 @@ export async function getPitcherStats(pitcherId) {
  *   games_played: number | null,
  *   runs_per_game: number | null,
  *   ops: number | null,
+ *   lob: number | null,
+ *   whip: number | null,
+ *   team_era: number | null,
+ *   saves: number | null,
+ *   blown_saves: number | null,
  * }>}
  */
 export async function getTeamStats(teamId) {
@@ -172,21 +181,53 @@ export async function getTeamStats(teamId) {
       throw new Error("getTeamStats: teamId должен быть числом");
     }
 
-    const url = `${MLB_STATS_API_BASE}/teams/${id}/stats?${TEAM_STATS_QUERY}&season=${TEAM_STATS_SEASON}`;
-    const res = await fetch(url);
+    const hittingUrl = `${MLB_STATS_API_BASE}/teams/${id}/stats?${TEAM_STATS_QUERY}&season=${TEAM_STATS_SEASON}`;
+    const pitchingUrl = `${MLB_STATS_API_BASE}/teams/${id}/stats?${buildTeamPitchingStatsQuery()}`;
 
-    if (!res.ok) {
-      throw new Error(`getTeamStats: HTTP ${res.status}`);
+    const [hitRes, pitchRes] = await Promise.all([
+      fetch(hittingUrl),
+      fetch(pitchingUrl),
+    ]);
+
+    if (!hitRes.ok) {
+      throw new Error(`getTeamStats (hitting): HTTP ${hitRes.status}`);
     }
 
-    const json = await res.json();
-    const stat = json?.stats?.[0]?.splits?.[0]?.stat;
+    const hitJson = await hitRes.json();
+    const stat = hitJson?.stats?.[0]?.splits?.[0]?.stat;
 
     if (stat == null || typeof stat !== "object") {
-      throw new Error("getTeamStats: нет stat в ответе API");
+      throw new Error("getTeamStats: нет hitting stat в ответе API");
     }
 
     const st = stat;
+
+    let whip = null;
+    let team_era = null;
+    let saves = null;
+    let blown_saves = null;
+
+    if (pitchRes.ok) {
+      try {
+        const pitchJson = await pitchRes.json();
+        const pst = pitchJson?.stats?.[0]?.splits?.[0]?.stat;
+        if (pst != null && typeof pst === "object") {
+          whip = parseStatNumber(pst.whip);
+          team_era = parseStatNumber(pst.era);
+          saves = parseStatNumber(pst.saves);
+          blown_saves = parseStatNumber(pst.blownSaves);
+        }
+      } catch (pitchParseErr) {
+        console.error("getTeamStats (pitching parse):", pitchParseErr);
+      }
+    } else {
+      console.warn(
+        "getTeamStats (pitching): HTTP",
+        pitchRes.status,
+        "для team",
+        id,
+      );
+    }
 
     return {
       season: TEAM_STATS_SEASON,
@@ -196,6 +237,11 @@ export async function getTeamStats(teamId) {
           ? Math.round((Number(st.runs) / Number(st.gamesPlayed)) * 100) / 100
           : null,
       ops: parseStatNumber(st.ops ?? null),
+      lob: parseStatNumber(st.leftOnBase),
+      whip,
+      team_era,
+      saves,
+      blown_saves,
     };
   } catch (err) {
     console.error("getTeamStats:", err);

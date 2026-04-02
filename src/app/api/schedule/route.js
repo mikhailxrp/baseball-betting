@@ -1,4 +1,5 @@
 import { transformSchedule } from "@/lib/transformSchedule";
+import { getGamesFromDB } from "@/lib/db.js";
 
 const MLB_STATS_API_BASE = "https://statsapi.mlb.com/api/v1";
 const MLB_SPORT_ID = 1;
@@ -30,12 +31,18 @@ export async function GET(request) {
   try {
     const date =
       request.nextUrl.searchParams.get("date") ?? getDefaultScheduleDate();
+    const source = request.nextUrl.searchParams.get("source");
 
     if (!DATE_QUERY_PATTERN.test(date)) {
       return Response.json(
         { error: "Неверный формат date. Используйте YYYY-MM-DD." },
         { status: 400 },
       );
+    }
+
+    if (source === "db") {
+      const games = await getGamesFromDB(date);
+      return Response.json({ games });
     }
 
     const url = buildScheduleUrl(date);
@@ -55,12 +62,12 @@ export async function GET(request) {
     const games = transformSchedule(data);
 
     const now = new Date();
-    const upcoming = games.filter((game) => {
-      if (!game.game_time_utc) return true;
-      return new Date(game.game_time_utc) > now;
-    });
+    // const upcoming = games.filter((game) => {
+    //   if (!game.game_time_utc) return true;
+    //   return new Date(game.game_time_utc) > now;
+    // });
 
-    return Response.json({ games: upcoming });
+    return Response.json({ games });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Неизвестная ошибка";
     return Response.json({ error: message }, { status: 500 });
