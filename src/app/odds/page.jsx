@@ -127,7 +127,14 @@ function OddsTableRow({ line }) {
 
   return (
     <tr className="border-b border-border/60 last:border-b-0">
-      <td className="px-3 py-2 align-top">{matchLabel(game)}</td>
+      <td className="px-3 py-2 align-top">
+        {matchLabel(game)}
+        <div className="text-xs text-muted-foreground mt-1">
+          Ставка:{' '}
+          {line.game?.bets?.find((b) => b.bet_type === line.market)?.team
+            ?.name ?? line.bet_team_name ?? line.team?.name ?? '—'}
+        </div>
+      </td>
       <td className="px-3 py-2 align-top text-muted-foreground">
         {line.game?.date}
         {line.game?.game_time_utc

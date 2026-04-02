@@ -2,7 +2,7 @@ import { supabase } from "@/lib/supabase.js";
 import { getPitcherStats, getTeamStats, TEAM_STATS_SEASON } from "@/lib/mlb.js";
 
 const GAME_STATUS_SCHEDULED = "scheduled";
-const PITCHER_STATS_FRESH_WINDOW_MS = 24 * 60 * 60 * 1000;
+const PITCHER_STATS_FRESH_WINDOW_MS = 1 * 60 * 60 * 1000;
 
 /** Параметр маршрута `/game/[id]` — числовой MLB game id. */
 const MLB_GAME_ID_ROUTE_PATTERN = /^\d+$/;

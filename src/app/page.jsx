@@ -209,7 +209,22 @@ function HomeContent() {
                       {awayName} @ {homeName}
                     </CardTitle>
                     <p className="text-sm text-muted-foreground">
-                      {toMoscowTime(game.game_time_utc)}
+                      {game.game_time_utc
+                        ? (() => {
+                            const d = new Date(game.game_time_utc);
+                            const date = d.toLocaleDateString('ru-RU', {
+                              day: '2-digit',
+                              month: '2-digit',
+                              timeZone: 'Europe/Moscow',
+                            });
+                            const time = d.toLocaleTimeString('ru-RU', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              timeZone: 'Europe/Moscow',
+                            });
+                            return `${date} ${time} МСК`;
+                          })()
+                        : '—'}
                     </p>
                   </CardHeader>
                   <CardContent className="flex flex-col gap-2 pt-4">

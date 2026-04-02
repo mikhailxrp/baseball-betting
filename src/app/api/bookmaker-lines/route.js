@@ -6,15 +6,23 @@ export async function GET() {
       .from('bookmaker_lines')
       .select(
         `
-        id, market, line, best_odds, best_bookmaker, implied_prob, fetched_at,
+        id, market, line, best_odds, best_bookmaker, implied_prob, fetched_at, team_id,
+        team:teams(name),
         game:games!inner(id, date, status, game_time_utc,
           home_team:teams!home_team_id(name),
           away_team:teams!away_team_id(name),
-          bets(bet_type, line, estimated_probability, confidence)
+          bets(
+            bet_type,
+            line,
+            estimated_probability,
+            confidence,
+            team:teams!team_id(name)
+          )
         )
       `,
       )
       .neq('game.status', 'Final')
+      .not('team_id', 'is', null)
       .order('fetched_at', { ascending: false });
 
     if (error) throw error;

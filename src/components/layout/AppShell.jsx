@@ -9,20 +9,17 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const SECTION_SCHEDULE = "schedule";
-const SECTION_ANALYSIS = "analysis";
-const SECTION_STATS = "stats";
 
 const NAV_ITEMS = [
-  { id: SECTION_SCHEDULE, label: "Расписание" },
-  { id: SECTION_ANALYSIS, label: "Анализ" },
-  { id: SECTION_STATS, label: "Статистика" },
+  { id: SECTION_SCHEDULE, label: "Расписание", href: "/" },
+  { id: "bets", label: "Ставки", href: "/bets" },
+  { id: "finance", label: "Финансы", href: "/finance" },
   { id: "odds", label: "Коэффициенты букмекеров", href: "/odds" },
+  { id: "admin", label: "Управление системой", href: "/admin" },
 ];
 
 const SECTION_TITLES = {
   [SECTION_SCHEDULE]: "Расписание",
-  [SECTION_ANALYSIS]: "Анализ",
-  [SECTION_STATS]: "Статистика",
 };
 
 /** @type {React.Context<null | {
@@ -41,7 +38,7 @@ export function useAppShell() {
   return ctx;
 }
 
-export { SECTION_SCHEDULE, SECTION_ANALYSIS, SECTION_STATS, SECTION_TITLES };
+export { SECTION_SCHEDULE, SECTION_TITLES };
 
 /**
  * Тот же каркас, что на главной: левый сайдбар + основная колонка.
@@ -104,7 +101,12 @@ export function AppShell({ children }) {
                   "w-full justify-start text-white hover:bg-soft-periwinkle hover:text-white",
                 );
                 if (item.href != null) {
-                  const isActive = pathname === item.href;
+                  let isActive = false;
+                  if (item.href === "/") {
+                    isActive = pathname === "/" && activeSection === item.id;
+                  } else {
+                    isActive = pathname === item.href;
+                  }
                   return (
                     <Link
                       key={item.id}
@@ -113,6 +115,11 @@ export function AppShell({ children }) {
                         navLinkClass,
                         isActive && "bg-soft-periwinkle text-white",
                       )}
+                      onClick={() => {
+                        if (item.href === "/") {
+                          setActiveSection(item.id);
+                        }
+                      }}
                     >
                       {item.label}
                     </Link>
