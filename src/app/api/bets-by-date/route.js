@@ -11,7 +11,7 @@ export async function GET(request) {
         id, bet_type, line, confidence, result, odds, amount,
         estimated_probability, entry_mode, created_at,
         game:games!inner(
-          id, date, status,
+          id, date, status, game_time_utc,
           home_team:teams!home_team_id(name),
           away_team:teams!away_team_id(name)
         ),
@@ -34,6 +34,8 @@ export async function GET(request) {
       home_team: b.game?.home_team?.name ?? '—',
       away_team: b.game?.away_team?.name ?? '—',
       team_name: b.team?.name ?? null,
+      game_time_utc: b.game?.game_time_utc ?? null,
+      game_date: b.game?.date ?? null,
     }));
 
     return Response.json({

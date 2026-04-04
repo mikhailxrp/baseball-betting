@@ -22,6 +22,7 @@ export async function GET(request) {
       success: true,
       pitchers_processed: result.pitchers_processed,
       teams_processed: result.teams_processed,
+      batters_processed: result.batters_processed,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Неизвестная ошибка";

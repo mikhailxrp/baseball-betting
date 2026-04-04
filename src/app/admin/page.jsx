@@ -1,16 +1,6 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import { AppShell } from '@/components/layout/AppShell.jsx';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
 
 const DATE_TIMEZONE = 'America/New_York';
 
@@ -29,37 +19,65 @@ function DatePickerModal({ isOpen, onClose, onConfirm, defaultDate }) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>Выберите дату</CardTitle>
-          <CardDescription>
-            Дата в часовом поясе America/New_York (ET)
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
+    >
+      <div
+        className="w-full max-w-md rounded-xl p-6"
+        style={{
+          backgroundColor: '#1A2540',
+          border: '1px solid #2A3550',
+        }}
+      >
+        <h2 className="text-xl font-medium mb-2" style={{ color: '#FFFFFF' }}>
+          Выберите дату
+        </h2>
+        <p className="text-sm mb-4" style={{ color: '#8B93A7' }}>
+          Дата в часовом поясе America/New_York (ET)
+        </p>
+        <div className="space-y-4">
           <input
             type="date"
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs"
+            className="w-full rounded-lg px-3 py-2 text-sm"
+            style={{
+              backgroundColor: '#2A3550',
+              border: '1px solid #2A3550',
+              color: '#FFFFFF',
+            }}
           />
           <div className="flex gap-2">
-            <Button
+            <button
               type="button"
               onClick={() => {
                 onConfirm(selectedDate);
                 onClose();
               }}
+              className="px-4 py-2 rounded-lg transition-all"
+              style={{
+                backgroundColor: '#3D6FFF',
+                color: '#FFFFFF',
+              }}
             >
               Подтвердить
-            </Button>
-            <Button type="button" variant="outline" onClick={onClose}>
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-lg transition-all"
+              style={{
+                border: '1px solid #3D6FFF',
+                color: '#3D6FFF',
+                backgroundColor: 'transparent',
+              }}
+            >
               Отмена
-            </Button>
+            </button>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }
@@ -73,30 +91,53 @@ function AdminSection({
   loading,
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>
-          Шаг {stepNumber}: {title}
-        </CardTitle>
-        <CardDescription>{description}</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <Button type="button" disabled={loading} onClick={onExecute}>
+    <div
+      className="rounded-xl p-6"
+      style={{
+        backgroundColor: '#1A2540',
+        border: '1px solid #2A3550',
+      }}
+    >
+      <h3 className="text-lg font-medium mb-2" style={{ color: '#FFFFFF' }}>
+        Шаг {stepNumber}: {title}
+      </h3>
+      <p className="text-sm mb-4" style={{ color: '#8B93A7' }}>
+        {description}
+      </p>
+      <div className="space-y-3">
+        <button
+          type="button"
+          disabled={loading}
+          onClick={onExecute}
+          className="px-4 py-2 rounded-lg transition-all"
+          style={{
+            backgroundColor: '#3D6FFF',
+            color: '#FFFFFF',
+            opacity: loading ? 0.6 : 1,
+            cursor: loading ? 'not-allowed' : 'pointer',
+          }}
+        >
           {loading ? 'Выполняется...' : 'Выполнить'}
-        </Button>
-        {result != null ? (
+        </button>
+        {result != null && (
           <div className="text-sm">
             {result.error != null ? (
-              <p className="text-destructive">{result.error}</p>
+              <p style={{ color: '#FF4D6A' }}>{result.error}</p>
             ) : (
-              <Badge variant="secondary">
+              <div
+                className="inline-block px-2 py-1 rounded text-xs"
+                style={{
+                  backgroundColor: 'rgba(0, 196, 140, 0.2)',
+                  color: '#00C48C',
+                }}
+              >
                 {result.message ?? 'Выполнено успешно'}
-              </Badge>
+              </div>
             )}
           </div>
-        ) : null}
-      </CardContent>
-    </Card>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -164,7 +205,7 @@ export default function AdminPage() {
         setResults((prev) => ({
           ...prev,
           step2: {
-            message: `Питчеры: ${json.pitchers_processed ?? 0}, Команды: ${json.teams_processed ?? 0}`,
+            message: `Питчеры: ${json.pitchers_processed ?? 0}, Команды: ${json.teams_processed ?? 0}, Бэттеры (команды): ${json.batters_processed ?? 0}`,
           },
         }));
       } catch (err) {
@@ -243,13 +284,15 @@ export default function AdminPage() {
   }, []);
 
   return (
-    <AppShell>
+    <div
+      style={{ backgroundColor: '#0F1624', minHeight: '100vh', padding: '32px' }}
+    >
       <div className="space-y-6">
         <header>
-          <h1 className="text-2xl font-bold tracking-tight">
+          <h1 className="text-2xl font-medium mb-2" style={{ color: '#FFFFFF' }}>
             Управление системой
           </h1>
-          <p className="text-sm text-muted-foreground">
+          <p style={{ color: '#8B93A7' }}>
             Последовательное обновление данных из MLB API и пересчёт метрик
           </p>
         </header>
@@ -265,8 +308,8 @@ export default function AdminPage() {
           />
           <AdminSection
             stepNumber={2}
-            title="Статистика питчеров и команд"
-            description="Обновляет таблицы pitcher_stats и team_stats из MLB API"
+            title="Статистика питчеров, команд и бэттеров"
+            description="Обновляет таблицы pitcher_stats, team_stats и batter_stats из MLB API"
             onExecute={() => openDateModal(executeStep2)}
             result={results.step2}
             loading={loadingSteps.step2}
@@ -300,6 +343,6 @@ export default function AdminPage() {
         }}
         defaultDate={getYesterdayET()}
       />
-    </AppShell>
+    </div>
   );
 }

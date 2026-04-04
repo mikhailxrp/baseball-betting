@@ -1,6 +1,12 @@
 const MLB_STATS_API_BASE = "https://statsapi.mlb.com/api/v1";
 const PITCHER_STATS_QUERY = "stats=yearByYear&group=pitching";
+const BATTER_HITTING_STATS_QUERY = "stats=yearByYear&group=hitting";
 const TEAM_STATS_QUERY = "stats=season&group=hitting";
+
+/** Сезоны для кэша hitting-статистики бэттеров (регулярка). */
+const BATTER_STATS_SEASONS = new Set(["2024", "2025", "2026"]);
+
+const MLB_GAME_TYPE_REGULAR = "R";
 
 function buildTeamPitchingStatsQuery() {
   return `stats=season&group=pitching&season=${TEAM_STATS_SEASON}`;
@@ -8,6 +14,12 @@ function buildTeamPitchingStatsQuery() {
 
 /** Сезон для team hitting / pitching stats (MLB Stats API). */
 export const TEAM_STATS_SEASON = 2026;
+
+/** Сезоны для топа бэттеров на странице матча (таблица batter_stats). */
+export const GAME_PAGE_TOP_BATTER_SEASONS = ["2025", "2026"];
+
+/** Число бэттеров в топе на странице матча. */
+export const GAME_PAGE_TOP_BATTER_LIMIT = 3;
 
 const FIP_CONSTANT = 3.1;
 
@@ -174,6 +186,168 @@ export async function getPitcherStats(pitcherId) {
  *   blown_saves: number | null,
  * }>}
  */
+/**
+ * Активный ростер команды (без питчеров).
+ *
+ * @param {unknown} mlbTeamId — MLB team id
+ * @returns {Promise<Array<{ playerId: number, playerName: string }>>}
+ */
+export async function getActiveRoster(mlbTeamId) {
+  try {
+    const id = Number(mlbTeamId);
+    if (Number.isNaN(id)) {
+      throw new Error("getActiveRoster: mlbTeamId должен быть числом");
+    }
+
+    const url = `${MLB_STATS_API_BASE}/teams/${id}/roster/active`;
+    const res = await fetch(url);
+
+    if (!res.ok) {
+      throw new Error(`getActiveRoster: HTTP ${res.status}`);
+    }
+
+    const json = await res.json();
+    const roster = json?.roster;
+
+    if (!Array.isArray(roster)) {
+      return [];
+    }
+
+    const out = [];
+    for (const entry of roster) {
+      if (entry == null || typeof entry !== "object") {
+        continue;
+      }
+      const posType = entry.position?.type;
+      if (posType === "Pitcher") {
+        continue;
+      }
+      const person = entry.person;
+      if (person == null || typeof person !== "object") {
+        continue;
+      }
+      const pid = Number(person.id);
+      if (Number.isNaN(pid)) {
+        continue;
+      }
+      const playerName =
+        person.fullName != null ? String(person.fullName) : "";
+      out.push({ playerId: pid, playerName });
+    }
+
+    return out;
+  } catch (err) {
+    console.error("getActiveRoster:", err);
+    throw err;
+  }
+}
+
+/**
+ * @param {unknown} split
+ * @returns {{
+ *   season: string,
+ *   games_played: number | null,
+ *   avg: number | null,
+ *   obp: number | null,
+ *   slg: number | null,
+ *   ops: number | null,
+ *   home_runs: number | null,
+ *   rbi: number | null,
+ *   strikeouts: number | null,
+ *   at_bats: number | null,
+ *   hits: number | null,
+ * } | null}
+ */
+function mapHittingSplitToSeason(split) {
+  if (split == null || typeof split !== "object") {
+    return null;
+  }
+  if (split.gameType !== MLB_GAME_TYPE_REGULAR) {
+    return null;
+  }
+
+  const seasonStr =
+    split.season != null ? String(split.season).trim() : "";
+  if (seasonStr === "" || !BATTER_STATS_SEASONS.has(seasonStr)) {
+    return null;
+  }
+
+  const st = split.stat;
+  if (st == null || typeof st !== "object") {
+    return null;
+  }
+
+  return {
+    season: seasonStr,
+    games_played:
+      st.gamesPlayed != null ? Number(st.gamesPlayed) : null,
+    avg: parseStatNumber(st.avg),
+    obp: parseStatNumber(st.obp),
+    slg: parseStatNumber(st.slg),
+    ops: parseStatNumber(st.ops),
+    home_runs: st.homeRuns != null ? Number(st.homeRuns) : null,
+    rbi: st.rbi != null ? Number(st.rbi) : null,
+    strikeouts: st.strikeOuts != null ? Number(st.strikeOuts) : null,
+    at_bats: st.atBats != null ? Number(st.atBats) : null,
+    hits: st.hits != null ? Number(st.hits) : null,
+  };
+}
+
+/**
+ * Сезонная hitting-статистика бэттера (yearByYear, регулярка, сезоны 2024–2026).
+ *
+ * @param {unknown} playerId — MLB people id
+ * @returns {Promise<Array<{
+ *   season: string,
+ *   games_played: number | null,
+ *   avg: number | null,
+ *   obp: number | null,
+ *   slg: number | null,
+ *   ops: number | null,
+ *   home_runs: number | null,
+ *   rbi: number | null,
+ *   strikeouts: number | null,
+ *   at_bats: number | null,
+ *   hits: number | null,
+ * }>>}
+ */
+export async function getBatterStats(playerId) {
+  try {
+    const id = Number(playerId);
+    if (Number.isNaN(id)) {
+      throw new Error("getBatterStats: playerId должен быть числом");
+    }
+
+    const url = `${MLB_STATS_API_BASE}/people/${id}/stats?${BATTER_HITTING_STATS_QUERY}`;
+    const res = await fetch(url);
+
+    if (!res.ok) {
+      throw new Error(`getBatterStats: HTTP ${res.status}`);
+    }
+
+    const json = await res.json();
+    const statsEntry = json?.stats?.[0];
+    const splits = statsEntry?.splits;
+
+    if (!Array.isArray(splits)) {
+      return [];
+    }
+
+    const out = [];
+    for (const split of splits) {
+      const row = mapHittingSplitToSeason(split);
+      if (row != null) {
+        out.push(row);
+      }
+    }
+
+    return out;
+  } catch (err) {
+    console.error("getBatterStats:", err);
+    throw err;
+  }
+}
+
 export async function getTeamStats(teamId) {
   try {
     const id = Number(teamId);

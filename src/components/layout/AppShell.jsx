@@ -13,6 +13,7 @@ const SECTION_SCHEDULE = "schedule";
 const NAV_ITEMS = [
   { id: SECTION_SCHEDULE, label: "Расписание", href: "/" },
   { id: "bets", label: "Ставки", href: "/bets" },
+  { id: "analytics", label: "Аналитика", href: "/analytics" },
   { id: "finance", label: "Финансы", href: "/finance" },
   { id: "calculator", label: "Калькулятор", href: "/calculator" },
   { id: "odds", label: "Коэффициенты букмекеров", href: "/odds" },

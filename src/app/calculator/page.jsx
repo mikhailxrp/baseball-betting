@@ -2,13 +2,6 @@
 
 import { useCallback, useState } from 'react';
 
-import { AppShell } from '@/components/layout/AppShell.jsx';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-
-const INPUT_CLASS =
-  'w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs';
-
 const DEFAULT_PROFIT_PERCENT = 50;
 const MIN_PROFIT_PERCENT = 10;
 const MAX_PROFIT_PERCENT = 100;
@@ -97,112 +90,150 @@ export default function CalculatorPage() {
   );
 
   return (
-    <AppShell>
+    <div
+      style={{ backgroundColor: '#0F1624', minHeight: '100vh', padding: '32px' }}
+    >
       <div className="mx-auto flex max-w-lg flex-col gap-6">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">
-          Калькулятор
-        </h1>
+        <header>
+          <h1 className="text-2xl font-medium mb-2" style={{ color: '#FFFFFF' }}>
+            Калькулятор
+          </h1>
+          <p style={{ color: '#8B93A7' }}>
+            Расчёт догонной ставки
+          </p>
+        </header>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Расчёт догонной ставки</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form className="flex flex-col gap-4" onSubmit={onSubmit}>
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="calc-loss" className="text-sm font-medium">
-                  Сумма проигрыша
-                </label>
-                <input
-                  id="calc-loss"
-                  name="loss"
-                  type="number"
-                  inputMode="decimal"
-                  min="0"
-                  step="any"
-                  placeholder={PLACEHOLDER_LOSS}
-                  value={lossAmount}
-                  onChange={(e) => setLossAmount(e.target.value)}
-                  className={INPUT_CLASS}
-                />
-              </div>
+        <div
+          className="rounded-xl p-6"
+          style={{
+            backgroundColor: '#1A2540',
+            border: '1px solid #2A3550',
+          }}
+        >
+          <form className="flex flex-col gap-4" onSubmit={onSubmit}>
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="calc-loss"
+                className="text-sm font-medium"
+                style={{ color: '#FFFFFF' }}
+              >
+                Сумма проигрыша
+              </label>
+              <input
+                id="calc-loss"
+                name="loss"
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="any"
+                placeholder={PLACEHOLDER_LOSS}
+                value={lossAmount}
+                onChange={(e) => setLossAmount(e.target.value)}
+                className="w-full rounded-lg px-3 py-2 text-sm"
+                style={{
+                  backgroundColor: '#2A3550',
+                  border: '1px solid #2A3550',
+                  color: '#FFFFFF',
+                }}
+              />
+            </div>
 
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="calc-odds" className="text-sm font-medium">
-                  Коэффициент следующей ставки
-                </label>
-                <input
-                  id="calc-odds"
-                  name="odds"
-                  type="number"
-                  inputMode="decimal"
-                  min="1.01"
-                  step={COEFFICIENT_STEP}
-                  placeholder={PLACEHOLDER_ODDS}
-                  value={coefficient}
-                  onChange={(e) => setCoefficient(e.target.value)}
-                  className={INPUT_CLASS}
-                />
-              </div>
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="calc-odds"
+                className="text-sm font-medium"
+                style={{ color: '#FFFFFF' }}
+              >
+                Коэффициент следующей ставки
+              </label>
+              <input
+                id="calc-odds"
+                name="odds"
+                type="number"
+                inputMode="decimal"
+                min="1.01"
+                step={COEFFICIENT_STEP}
+                placeholder={PLACEHOLDER_ODDS}
+                value={coefficient}
+                onChange={(e) => setCoefficient(e.target.value)}
+                className="w-full rounded-lg px-3 py-2 text-sm"
+                style={{
+                  backgroundColor: '#2A3550',
+                  border: '1px solid #2A3550',
+                  color: '#FFFFFF',
+                }}
+              />
+            </div>
 
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="calc-pct" className="text-sm font-medium">
-                  Желаемая прибыль %
-                </label>
-                <input
-                  id="calc-pct"
-                  name="profitPercent"
-                  type="number"
-                  inputMode="decimal"
-                  min={MIN_PROFIT_PERCENT}
-                  max={MAX_PROFIT_PERCENT}
-                  step="1"
-                  value={profitPercent}
-                  onChange={(e) => setProfitPercent(e.target.value)}
-                  className={INPUT_CLASS}
-                />
-              </div>
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="calc-pct"
+                className="text-sm font-medium"
+                style={{ color: '#FFFFFF' }}
+              >
+                Желаемая прибыль %
+              </label>
+              <input
+                id="calc-pct"
+                name="profitPercent"
+                type="number"
+                inputMode="decimal"
+                min={MIN_PROFIT_PERCENT}
+                max={MAX_PROFIT_PERCENT}
+                step="1"
+                value={profitPercent}
+                onChange={(e) => setProfitPercent(e.target.value)}
+                className="w-full rounded-lg px-3 py-2 text-sm"
+                style={{
+                  backgroundColor: '#2A3550',
+                  border: '1px solid #2A3550',
+                  color: '#FFFFFF',
+                }}
+              />
+            </div>
 
-              <Button type="submit">Рассчитать</Button>
-            </form>
+            <button
+              type="submit"
+              className="px-4 py-2 rounded-lg transition-all"
+              style={{
+                backgroundColor: '#3D6FFF',
+                color: '#FFFFFF',
+              }}
+            >
+              Рассчитать
+            </button>
+          </form>
 
-            {error ? (
-              <p className="mt-4 text-sm text-destructive" role="alert">
-                {error}
-              </p>
-            ) : null}
+          {error && (
+            <p className="mt-4 text-sm" style={{ color: '#FF4D6A' }} role="alert">
+              {error}
+            </p>
+          )}
 
-            {result != null ? (
-              <ul className="mt-4 flex flex-col gap-2 text-sm">
-                <li>
-                  <span className="text-muted-foreground">
-                    Следующая ставка:{' '}
-                  </span>
-                  <span className="font-medium">
-                    {formatMoney(result.nextBet)}
-                  </span>
-                </li>
-                <li>
-                  <span className="text-muted-foreground">
-                    Если выиграешь:{' '}
-                  </span>
-                  <span className="font-medium text-green-700 dark:text-green-400">
-                    +{formatMoney(result.netProfitIfWin)} (чистая прибыль)
-                  </span>
-                </li>
-                <li>
-                  <span className="text-muted-foreground">
-                    Если проиграешь снова: итого потеряно{' '}
-                  </span>
-                  <span className="font-medium">
-                    {formatMoney(result.totalLostIfLoseAgain)}
-                  </span>
-                </li>
-              </ul>
-            ) : null}
-          </CardContent>
-        </Card>
+          {result != null && (
+            <ul className="mt-4 flex flex-col gap-2 text-sm" style={{ color: '#FFFFFF' }}>
+              <li>
+                <span style={{ color: '#8B93A7' }}>Следующая ставка: </span>
+                <span className="font-medium">{formatMoney(result.nextBet)}</span>
+              </li>
+              <li>
+                <span style={{ color: '#8B93A7' }}>Если выиграешь: </span>
+                <span className="font-medium" style={{ color: '#00C48C' }}>
+                  +{formatMoney(result.netProfitIfWin)} (чистая прибыль)
+                </span>
+              </li>
+              <li>
+                <span style={{ color: '#8B93A7' }}>
+                  Если проиграешь снова: итого потеряно{' '}
+                </span>
+                <span className="font-medium">
+                  {formatMoney(result.totalLostIfLoseAgain)}
+                </span>
+              </li>
+            </ul>
+          )}
+        </div>
       </div>
-    </AppShell>
+    </div>
   );
 }

@@ -3,17 +3,6 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 
-import { Badge } from '@/components/ui/badge';
-import { Button, buttonVariants } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-
 const PAGE_TITLE = 'Коэффициенты букмекеров';
 const EDGE_STRONG_THRESHOLD = 7;
 /** Время старта в колонке «Дата» — по Москве. */
@@ -87,22 +76,41 @@ function edgeBadgeLabel(edge) {
 function EdgeBadge({ edge }) {
   if (edge >= EDGE_STRONG_THRESHOLD) {
     return (
-      <Badge
-        variant="outline"
-        className="border-emerald-500/40 bg-emerald-500/15 text-emerald-800 dark:text-emerald-300"
+      <div
+        className="inline-block px-2 py-1 rounded text-xs"
+        style={{
+          backgroundColor: 'rgba(0, 196, 140, 0.2)',
+          color: '#00C48C',
+        }}
       >
         {edgeBadgeLabel(edge)}
-      </Badge>
+      </div>
     );
   }
   if (edge >= 0) {
     return (
-      <Badge variant="secondary" className="text-muted-foreground">
+      <div
+        className="inline-block px-2 py-1 rounded text-xs"
+        style={{
+          backgroundColor: 'rgba(139, 147, 167, 0.2)',
+          color: '#8B93A7',
+        }}
+      >
         {edgeBadgeLabel(edge)}
-      </Badge>
+      </div>
     );
   }
-  return <Badge variant="destructive">{edgeBadgeLabel(edge)}</Badge>;
+  return (
+    <div
+      className="inline-block px-2 py-1 rounded text-xs"
+      style={{
+        backgroundColor: 'rgba(255, 77, 106, 0.2)',
+        color: '#FF4D6A',
+      }}
+    >
+      {edgeBadgeLabel(edge)}
+    </div>
+  );
 }
 
 /**
@@ -126,16 +134,28 @@ function OddsTableRow({ line }) {
   const typeLabel = MARKET_LABELS[line.market] ?? line.market ?? '—';
 
   return (
-    <tr className="border-b border-border/60 last:border-b-0">
+    <tr
+      className="transition-all last:border-b-0"
+      style={{
+        borderBottom: '1px solid #2A3550',
+        color: '#FFFFFF',
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.backgroundColor = 'rgba(61, 111, 255, 0.05)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.backgroundColor = 'transparent';
+      }}
+    >
       <td className="px-3 py-2 align-top">
         {matchLabel(game)}
-        <div className="text-xs text-muted-foreground mt-1">
+        <div className="text-xs mt-1" style={{ color: '#8B93A7' }}>
           Ставка:{' '}
           {line.game?.bets?.find((b) => b.bet_type === line.market)?.team
             ?.name ?? line.bet_team_name ?? line.team?.name ?? '—'}
         </div>
       </td>
-      <td className="px-3 py-2 align-top text-muted-foreground">
+      <td className="px-3 py-2 align-top" style={{ color: '#8B93A7' }}>
         {line.game?.date}
         {line.game?.game_time_utc
           ? ' ' +
@@ -212,88 +232,121 @@ export default function OddsPage() {
   }, [refreshAll]);
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-6 p-4 md:p-6">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="font-heading text-2xl font-semibold tracking-tight">
-            {PAGE_TITLE}
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Тоталы MLB и сравнение с нашей оценкой из анализа
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            onClick={() => void refreshAll()}
-            disabled={pageLoading}
-          >
-            Обновить коэффициенты
-          </Button>
-          <Link
-            href="/"
-            className={cn(buttonVariants({ variant: 'outline' }))}
-          >
-            На главную
-          </Link>
-        </div>
-      </header>
-
-      {error != null ? (
-        <Card className="border-destructive/40">
-          <CardHeader>
-            <CardTitle className="text-destructive">Ошибка</CardTitle>
-            <CardDescription>{error}</CardDescription>
-          </CardHeader>
-        </Card>
-      ) : null}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Линии</CardTitle>
-          <CardDescription>
-            {pageLoading
-              ? 'Загрузка и синхронизация с The Odds API…'
-              : `Записей: ${lines.length}`}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="overflow-x-auto p-0 sm:px-6">
-          {pageLoading && lines.length === 0 ? (
-            <p className="px-6 pb-6 text-sm text-muted-foreground">
-              Загрузка…
+    <div
+      style={{ backgroundColor: '#0F1624', minHeight: '100vh', padding: '32px' }}
+    >
+      <div className="mx-auto w-full max-w-7xl space-y-6">
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-medium mb-2" style={{ color: '#FFFFFF' }}>
+              {PAGE_TITLE}
+            </h1>
+            <p style={{ color: '#8B93A7' }}>
+              Тоталы MLB и сравнение с нашей оценкой из анализа
             </p>
-          ) : lines.length === 0 ? (
-            <p className="px-6 pb-6 text-sm text-muted-foreground">
-              Нет данных в bookmaker_lines. Проверьте синхронизацию и ключ
-              ODDS_API_KEY.
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void refreshAll()}
+              disabled={pageLoading}
+              className="px-4 py-2 rounded-lg transition-all"
+              style={{
+                backgroundColor: '#3D6FFF',
+                color: '#FFFFFF',
+                opacity: pageLoading ? 0.6 : 1,
+                cursor: pageLoading ? 'not-allowed' : 'pointer',
+              }}
+            >
+              Обновить коэффициенты
+            </button>
+            <Link
+              href="/"
+              className="px-4 py-2 rounded-lg transition-all"
+              style={{
+                border: '1px solid #3D6FFF',
+                color: '#3D6FFF',
+                backgroundColor: 'transparent',
+              }}
+            >
+              На главную
+            </Link>
+          </div>
+        </header>
+
+        {error != null && (
+          <div
+            className="rounded-xl p-6"
+            style={{
+              backgroundColor: '#1A2540',
+              border: '1px solid #FF4D6A',
+            }}
+          >
+            <h3 className="text-base font-medium mb-2" style={{ color: '#FF4D6A' }}>
+              Ошибка
+            </h3>
+            <p style={{ color: '#8B93A7' }}>{error}</p>
+          </div>
+        )}
+
+        <div
+          className="rounded-xl"
+          style={{
+            backgroundColor: '#1A2540',
+            border: '1px solid #2A3550',
+          }}
+        >
+          <div className="p-6 pb-4">
+            <h2 className="text-base font-medium mb-2" style={{ color: '#FFFFFF' }}>
+              Линии
+            </h2>
+            <p style={{ color: '#8B93A7' }}>
+              {pageLoading
+                ? 'Загрузка и синхронизация с The Odds API…'
+                : `Записей: ${lines.length}`}
             </p>
-          ) : (
-            <table className="w-full min-w-[960px] border-collapse text-left text-sm">
-              <thead>
-                <tr className="border-b border-border text-muted-foreground">
-                  <th className="px-3 py-2 font-medium">Матч</th>
-                  <th className="px-3 py-2 font-medium">Дата</th>
-                  <th className="px-3 py-2 font-medium">Тип</th>
-                  <th className="px-3 py-2 font-medium">Линия</th>
-                  <th className="px-3 py-2 font-medium">Линия агента</th>
-                  <th className="px-3 py-2 font-medium">
-                    Лучший коэффициент
-                  </th>
-                  <th className="px-3 py-2 font-medium">Букмекер</th>
-                  <th className="px-3 py-2 font-medium">Implied%</th>
-                  <th className="px-3 py-2 font-medium">Наша оценка%</th>
-                  <th className="px-3 py-2 font-medium">Перевес</th>
-                </tr>
-              </thead>
-              <tbody>
-                {lines.map((line) => (
-                  <OddsTableRow key={line.id} line={line} />
-                ))}
-              </tbody>
-            </table>
-          )}
-        </CardContent>
-      </Card>
+          </div>
+          <div className="overflow-x-auto">
+            {pageLoading && lines.length === 0 ? (
+              <p className="px-6 pb-6 text-sm" style={{ color: '#8B93A7' }}>
+                Загрузка…
+              </p>
+            ) : lines.length === 0 ? (
+              <p className="px-6 pb-6 text-sm" style={{ color: '#8B93A7' }}>
+                Нет данных в bookmaker_lines. Проверьте синхронизацию и ключ
+                ODDS_API_KEY.
+              </p>
+            ) : (
+              <table className="w-full min-w-[960px] border-collapse text-left text-sm">
+                <thead>
+                  <tr
+                    className="text-left"
+                    style={{ color: '#8B93A7', borderBottom: '1px solid #2A3550' }}
+                  >
+                    <th className="px-3 py-2 font-medium">Матч</th>
+                    <th className="px-3 py-2 font-medium">Дата</th>
+                    <th className="px-3 py-2 font-medium">Тип</th>
+                    <th className="px-3 py-2 font-medium">Линия</th>
+                    <th className="px-3 py-2 font-medium">Линия агента</th>
+                    <th className="px-3 py-2 font-medium">
+                      Лучший коэффициент
+                    </th>
+                    <th className="px-3 py-2 font-medium">Букмекер</th>
+                    <th className="px-3 py-2 font-medium">Implied%</th>
+                    <th className="px-3 py-2 font-medium">Наша оценка%</th>
+                    <th className="px-3 py-2 font-medium">Перевес</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.map((line) => (
+                    <OddsTableRow key={line.id} line={line} />
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -57,6 +57,18 @@
 
 :root {
   --font-sans: "Roboto", sans-serif;
+  
+  --bg-primary: #0F1624;
+  --bg-secondary: #1A2540;
+  --bg-sidebar: #141E30;
+  --bg-element: #2A3550;
+  --accent-blue: #3D6FFF;
+  --accent-gold: #F5A623;
+  --text-primary: #FFFFFF;
+  --text-muted: #8B93A7;
+  --success: #00C48C;
+  --danger: #FF4D6A;
+  
   --background: #fff;
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);

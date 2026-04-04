@@ -1,9 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { AppShell } from '@/components/layout/AppShell.jsx';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   CartesianGrid,
   Line,
@@ -40,14 +37,20 @@ function formatMoney(value) {
 
 function StatCard({ title, value, className = '' }) {
   return (
-    <Card className={className}>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm text-muted-foreground">{title}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <p className="text-2xl font-semibold">{value}</p>
-      </CardContent>
-    </Card>
+    <div
+      className={`rounded-xl p-6 ${className}`}
+      style={{
+        backgroundColor: '#1A2540',
+        border: '1px solid #2A3550',
+      }}
+    >
+      <p className="text-sm mb-2" style={{ color: '#8B93A7' }}>
+        {title}
+      </p>
+      <p className="text-2xl font-semibold" style={{ color: '#FFFFFF' }}>
+        {value}
+      </p>
+    </div>
   );
 }
 
@@ -61,7 +64,14 @@ function BankHistoryTooltip({ active, payload }) {
   }
 
   return (
-    <div className="rounded-md border border-border bg-background p-3 text-sm shadow-md">
+    <div
+      className="rounded-lg p-3 text-sm shadow-md"
+      style={{
+        backgroundColor: '#1A2540',
+        border: '1px solid #2A3550',
+        color: '#FFFFFF',
+      }}
+    >
       <p className="font-medium">{point.dateLabel ?? '—'}</p>
       <p>Баланс: {formatMoney(point.balance)}</p>
       <p>Изменение: {formatMoney(point.change)}</p>
@@ -200,47 +210,52 @@ export default function FinancePage() {
   );
 
   return (
-    <AppShell>
+    <div
+      style={{ backgroundColor: '#0F1624', minHeight: '100vh', padding: '32px' }}
+    >
       <div className="space-y-6">
         <header>
-          <h1 className="text-2xl font-bold tracking-tight">Финансы</h1>
-          <p className="text-sm text-muted-foreground">
+          <h1 className="text-2xl font-medium mb-2" style={{ color: '#FFFFFF' }}>
+            Финансы
+          </h1>
+          <p style={{ color: '#8B93A7' }}>
             Общий банк и результаты по командам на основе закрытых ставок
           </p>
         </header>
 
-        {error != null ? (
-          <p className="text-sm text-destructive" role="alert">
+        {error != null && (
+          <p className="text-sm" style={{ color: '#FF4D6A' }} role="alert">
             {error}
           </p>
-        ) : null}
+        )}
 
-        {loading ? (
-          <p className="text-sm text-muted-foreground">Загрузка...</p>
-        ) : null}
+        {loading && (
+          <p className="text-sm" style={{ color: '#8B93A7' }}>
+            Загрузка...
+          </p>
+        )}
 
-        {!loading ? (
+        {!loading && (
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold">Текущий банк</h2>
+            <h2 className="text-lg font-medium" style={{ color: '#FFFFFF' }}>
+              Текущий банк
+            </h2>
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
               <StatCard
                 title="Текущий банк"
                 value={formatMoney(currentBank)}
-                className={
-                  currentBank > 0
-                    ? 'border-green-600/30'
-                    : currentBank < 0
-                      ? 'border-red-600/30'
-                      : ''
-                }
               />
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm text-muted-foreground">
-                    Пополнение / вывод
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
+              <div
+                className="rounded-xl p-6"
+                style={{
+                  backgroundColor: '#1A2540',
+                  border: '1px solid #2A3550',
+                }}
+              >
+                <p className="text-sm mb-4" style={{ color: '#8B93A7' }}>
+                  Пополнение / вывод
+                </p>
+                <div className="space-y-3">
                   <input
                     type="number"
                     step="0.01"
@@ -248,34 +263,55 @@ export default function FinancePage() {
                     value={bankAmount}
                     onChange={(e) => setBankAmount(e.target.value)}
                     placeholder="Введите сумму"
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs"
+                    className="w-full rounded-lg px-3 py-2 text-sm"
+                    style={{
+                      backgroundColor: '#2A3550',
+                      border: '1px solid #2A3550',
+                      color: '#FFFFFF',
+                    }}
                   />
                   <div className="flex gap-2">
-                    <Button
+                    <button
                       type="button"
                       disabled={bankSubmitting}
                       onClick={() => void submitBankAction('deposit')}
+                      className="px-4 py-2 rounded-lg transition-all"
+                      style={{
+                        backgroundColor: '#3D6FFF',
+                        color: '#FFFFFF',
+                        opacity: bankSubmitting ? 0.6 : 1,
+                        cursor: bankSubmitting ? 'not-allowed' : 'pointer',
+                      }}
                     >
                       Пополнить
-                    </Button>
-                    <Button
+                    </button>
+                    <button
                       type="button"
-                      variant="outline"
                       disabled={bankSubmitting}
                       onClick={() => void submitBankAction('withdraw')}
+                      className="px-4 py-2 rounded-lg transition-all"
+                      style={{
+                        border: '1px solid #3D6FFF',
+                        color: '#3D6FFF',
+                        backgroundColor: 'transparent',
+                        opacity: bankSubmitting ? 0.6 : 1,
+                        cursor: bankSubmitting ? 'not-allowed' : 'pointer',
+                      }}
                     >
                       Вывести
-                    </Button>
+                    </button>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             </div>
           </section>
-        ) : null}
+        )}
 
-        {!loading && summary != null ? (
+        {!loading && summary != null && (
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold">Дашборд банка</h2>
+            <h2 className="text-lg font-medium" style={{ color: '#FFFFFF' }}>
+              Дашборд банка
+            </h2>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <StatCard
                 title="Общая прибыль/убыток"
@@ -292,109 +328,137 @@ export default function FinancePage() {
               />
             </div>
           </section>
-        ) : null}
+        )}
 
-        {!loading ? (
+        {!loading && (
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold">Рост банка</h2>
-            <Card>
-              <CardContent className="p-4 sm:p-6">
-                {bankHistory.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    Нет данных для графика.
-                  </p>
-                ) : (
-                  <div className="h-72 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={bankHistory}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="dateLabel" />
-                        <YAxis />
-                        <Tooltip content={<BankHistoryTooltip />} />
-                        <Line
-                          type="monotone"
-                          dataKey="positiveBalance"
-                          stroke="#16a34a"
-                          strokeWidth={2}
-                          dot={false}
-                          connectNulls
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="negativeBalance"
-                          stroke="#dc2626"
-                          strokeWidth={2}
-                          dot={false}
-                          connectNulls
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            <h2 className="text-lg font-medium" style={{ color: '#FFFFFF' }}>
+              Рост банка
+            </h2>
+            <div
+              className="rounded-xl p-6"
+              style={{
+                backgroundColor: '#1A2540',
+                border: '1px solid #2A3550',
+              }}
+            >
+              {bankHistory.length === 0 ? (
+                <p className="text-sm" style={{ color: '#8B93A7' }}>
+                  Нет данных для графика.
+                </p>
+              ) : (
+                <div className="h-72 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={bankHistory}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#2A3550" />
+                      <XAxis dataKey="dateLabel" stroke="#8B93A7" />
+                      <YAxis stroke="#8B93A7" />
+                      <Tooltip content={<BankHistoryTooltip />} />
+                      <Line
+                        type="monotone"
+                        dataKey="positiveBalance"
+                        stroke="#00C48C"
+                        strokeWidth={2}
+                        dot={false}
+                        connectNulls
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="negativeBalance"
+                        stroke="#FF4D6A"
+                        strokeWidth={2}
+                        dot={false}
+                        connectNulls
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
           </section>
-        ) : null}
+        )}
 
-        {!loading ? (
+        {!loading && (
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold">Статистика по командам</h2>
-            <Card>
-              <CardContent className="overflow-x-auto p-0">
-                {byTeam.length === 0 ? (
-                  <p className="p-6 text-sm text-muted-foreground">
-                    Нет закрытых ставок для отображения.
-                  </p>
-                ) : (
-                  <table className="w-full min-w-[920px] text-sm">
-                    <thead>
-                      <tr className="border-b text-muted-foreground">
-                        <th className="px-4 py-3 text-left font-medium">Команда</th>
-                        <th className="px-4 py-3 text-left font-medium">Тип ставки</th>
-                        <th className="px-4 py-3 text-left font-medium">Ставок</th>
-                        <th className="px-4 py-3 text-left font-medium">WIN</th>
-                        <th className="px-4 py-3 text-left font-medium">LOSS</th>
-                        <th className="px-4 py-3 text-left font-medium">PUSH</th>
-                        <th className="px-4 py-3 text-left font-medium">Винрейт</th>
-                        <th className="px-4 py-3 text-left font-medium">Прибыль</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {byTeam.map((row) => (
-                        <tr
-                          key={`${row.team_name}_${row.bet_type}`}
-                          className="border-b last:border-b-0"
-                        >
-                          <td className="px-4 py-3">{row.team_name}</td>
-                          <td className="px-4 py-3">
-                            {BET_TYPE_LABELS[row.bet_type] ?? row.bet_type ?? '—'}
-                          </td>
-                          <td className="px-4 py-3">{row.bets}</td>
-                          <td className="px-4 py-3">{row.wins}</td>
-                          <td className="px-4 py-3">{row.losses}</td>
-                          <td className="px-4 py-3">{row.pushes}</td>
-                          <td className="px-4 py-3">{formatPercent(row.winrate)}</td>
-                          <td
-                            className={`px-4 py-3 ${
+            <h2 className="text-lg font-medium" style={{ color: '#FFFFFF' }}>
+              Статистика по командам
+            </h2>
+            <div
+              className="rounded-xl overflow-x-auto"
+              style={{
+                backgroundColor: '#1A2540',
+                border: '1px solid #2A3550',
+              }}
+            >
+              {byTeam.length === 0 ? (
+                <p className="p-6 text-sm" style={{ color: '#8B93A7' }}>
+                  Нет закрытых ставок для отображения.
+                </p>
+              ) : (
+                <table className="w-full min-w-[920px] text-sm">
+                  <thead>
+                    <tr
+                      className="text-left"
+                      style={{ color: '#8B93A7', borderBottom: '1px solid #2A3550' }}
+                    >
+                      <th className="px-4 py-3 font-medium">Команда</th>
+                      <th className="px-4 py-3 font-medium">Тип ставки</th>
+                      <th className="px-4 py-3 font-medium">Ставок</th>
+                      <th className="px-4 py-3 font-medium">WIN</th>
+                      <th className="px-4 py-3 font-medium">LOSS</th>
+                      <th className="px-4 py-3 font-medium">PUSH</th>
+                      <th className="px-4 py-3 font-medium">Винрейт</th>
+                      <th className="px-4 py-3 font-medium">Прибыль</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {byTeam.map((row) => (
+                      <tr
+                        key={`${row.team_name}_${row.bet_type}`}
+                        className="transition-all last:border-b-0"
+                        style={{
+                          borderBottom: '1px solid #2A3550',
+                          color: '#FFFFFF',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor =
+                            'rgba(61, 111, 255, 0.05)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = 'transparent';
+                        }}
+                      >
+                        <td className="px-4 py-3">{row.team_name}</td>
+                        <td className="px-4 py-3">
+                          {BET_TYPE_LABELS[row.bet_type] ?? row.bet_type ?? '—'}
+                        </td>
+                        <td className="px-4 py-3">{row.bets}</td>
+                        <td className="px-4 py-3">{row.wins}</td>
+                        <td className="px-4 py-3">{row.losses}</td>
+                        <td className="px-4 py-3">{row.pushes}</td>
+                        <td className="px-4 py-3">{formatPercent(row.winrate)}</td>
+                        <td
+                          className="px-4 py-3"
+                          style={{
+                            color:
                               Number(row.profit) > 0
-                                ? 'text-green-600'
+                                ? '#00C48C'
                                 : Number(row.profit) < 0
-                                  ? 'text-red-600'
-                                  : ''
-                            }`}
-                          >
-                            {formatMoney(row.profit)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </CardContent>
-            </Card>
+                                  ? '#FF4D6A'
+                                  : '#FFFFFF',
+                          }}
+                        >
+                          {formatMoney(row.profit)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </section>
-        ) : null}
+        )}
       </div>
-    </AppShell>
+    </div>
   );
 }
